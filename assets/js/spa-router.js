@@ -71,7 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="card">
                         <img class="card-image" src="/assets/img/card-6.webp" alt="Zero carta">
                         <div class="card-content">
-                            <h3 class="card-title">"Zero carta"</h3>
+                            <h3 class="card-title">Zero carta</h3>
                             <p class="card-description">Repository documentale</p>
                             <a href="/zero-carta" class="card-button" data-spa="true">Vai!</a>
                         </div>
@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="card">
                         <img class="card-image" src="/assets/img/card-7.webp" alt="CRM clienti">
                         <div class="card-content">
-                            <h3 class="card-title">CRM clienti</h3>
+                            <h3 class="card-title">CRM</h3>
                             <p class="card-description">Ciclo di acquisizione clienti</p>
                             <a href="/crm-clienti" class="card-button" data-spa="true">Vai!</a>
                     </div>
