@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice documentNumber="SF-134C18BF294E44A8">
+  <Causale>acquisto</Causale>
+  <Items>
+    <Item>
+      <Description>matite</Description>
+      <Quantity>10</Quantity>
+      <UnitPrice>1.00</UnitPrice>
+      <VatRate>0</VatRate>
+      <Nature>non_soggetta</Nature>
+      <TaxableAmount>10.00</TaxableAmount>
+      <TaxAmount>0.00</TaxAmount>
+      <AdditionalExpenses>0.00</AdditionalExpenses>
+      <LegalReference></LegalReference>
+      <LineTotal>10.00</LineTotal>
+    </Item>
+  </Items>
+</Invoice>
