@@ -22,6 +22,34 @@ $fields = [
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+	$action = $_GET['action'] ?? '';
+	if ($action === 'orders') {
+		$clientId = (int) ($_GET['client_id'] ?? 0);
+		if ($clientId <= 0) {
+			http_response_code(400);
+			echo json_encode(['success' => false, 'message' => 'Cliente non valido']);
+			exit;
+		}
+		$stmt = $pdo->prepare('SELECT id, order_number, total, currency, notes, status, created_at FROM orders WHERE client_id = ? AND user_id = ? ORDER BY created_at DESC');
+		$stmt->execute([$clientId, $userId]);
+		$orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+		if ($orders) {
+			$ids = array_map(static fn($o) => (int) $o['id'], $orders);
+			$in = implode(',', array_fill(0, count($ids), '?'));
+			$itemsStmt = $pdo->prepare("SELECT id, order_id, position, description, quantity, unit_price, vat_rate, line_total FROM order_items WHERE order_id IN ($in) ORDER BY order_id, position, id");
+			$itemsStmt->execute($ids);
+			$byOrder = [];
+			foreach ($itemsStmt->fetchAll(PDO::FETCH_ASSOC) as $item) {
+				$byOrder[(int) $item['order_id']][] = $item;
+			}
+			foreach ($orders as &$order) {
+				$order['items'] = $byOrder[(int) $order['id']] ?? [];
+			}
+		}
+		echo json_encode(['success' => true, 'orders' => $orders]);
+		exit;
+	}
+
 	$stmt = $pdo->prepare('SELECT id, client_type, company_name, first_name, last_name, vat_number, cf, address, city, state, postal_code, country, email, phone, crm_status FROM clients WHERE user_id = :user_id ORDER BY company_name, last_name, first_name');
 	$stmt->execute([':user_id' => $userId]);
 	echo json_encode(['success' => true, 'clients' => $stmt->fetchAll()]);

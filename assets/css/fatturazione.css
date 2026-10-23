@@ -65,6 +65,12 @@ body.dashboard-page {
 	justify-content: flex-start;
 	box-sizing: border-box;
 	width: min(100%, 900px);
+	gap: 1rem;
+}
+
+.invoice-create-heading h2 {
+	margin: 0;
+	order: 1;
 }
 
 .invoice-action {
@@ -113,6 +119,7 @@ body.dashboard-page {
 	align-items: center;
 	justify-content: flex-start;
 	gap: 1rem;
+	margin-bottom: 1rem;
 }
 
 .invoice-list-heading .invoice-back-button {

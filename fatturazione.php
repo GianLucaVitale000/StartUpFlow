@@ -60,7 +60,6 @@ $username = $_SESSION['username'] ?? 'Utente';
 ?>
 <div class="service-page fatturazione">
     <header class="service-header">
-        
         <h1>Fatturazione</h1>
         <p>Crea e visualizza le tue fatture pro-forma</p>
     </header>
@@ -83,6 +82,7 @@ $username = $_SESSION['username'] ?? 'Utente';
                 <button type="button" class="invoice-back-button" data-invoice-action="home" aria-label="Torna alle azioni fatturazione" title="Torna indietro">
                     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m14.5 5-7 7 7 7M8 12h13" /></svg>
                 </button>
+                
             </div>
             <p class="invoice-list-status" id="invoice-list-status" role="status" aria-live="polite"></p>
             <div class="invoice-list" id="invoice-list"></div>
@@ -90,10 +90,12 @@ $username = $_SESSION['username'] ?? 'Utente';
 
         <div class="invoice-create-workflow" id="invoice-create-workflow" hidden>
         <div class="invoice-create-heading">
+            <h2> Crea fattura</h2>
             <button type="button" class="invoice-back-button" data-invoice-action="home" aria-label="Torna alle azioni fatturazione" title="Torna alle azioni">
                 <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m14.5 5-7 7 7 7M8 12h13" /></svg>
             </button>
         </div>
+
         <?php if (!$isProfileOk): ?>
         <section class="profile-completion" id="profile-completion">
             <strong>Completa il tuo profilo per continuare</strong>
@@ -147,10 +149,10 @@ $username = $_SESSION['username'] ?? 'Utente';
         <?php endif; ?>
 
         <section class="cliente-completion" id="cliente-completion"<?php echo $isProfileOk ? '' : ' hidden'; ?>>
-            <strong>Cliente per la fattura</strong>
+            <strong>1) Definisci il cliente intestatario della fattura</strong>
             <div class="client-mode-buttons" role="tablist" aria-label="Gestione cliente">
                 <button type="button" class="client-mode-button is-active" data-client-mode="select">Seleziona Cliente</button>
-                <button type="button" class="client-mode-button" data-client-mode="add">Aggiungi Cliente</button>
+                <button type="button" class="client-mode-button" data-client-mode="add">Nuovo Cliente</button>
                 <!-- <button type="button" class="client-mode-button" data-client-mode="edit" disabled>Modifica Cliente</button> -->
             </div>
 
@@ -161,7 +163,15 @@ $username = $_SESSION['username'] ?? 'Utente';
                         <option value="">Caricamento clienti...</option>
                     </select>
                 </label>
-                <button type="button" class="profile-modal__save" id="use-client-button" disabled>Usa questo cliente</button>
+                <label class="profile-modal__field" id="order-select-container">
+                    <span>Protocollo ordine</span>
+                    <select id="order-select">
+                        <option value="">Seleziona un ordine</option>
+                    </select>
+                </label>
+                <div style="margin-top: 1rem;">
+                    <button type="button" class="profile-modal__save" id="use-client-button" disabled>Vai!</button>
+                </div>
             </div>
 
             <form class="profile-modal__grid" id="cliente-form" data-client-panel="form" hidden>
@@ -232,7 +242,7 @@ $username = $_SESSION['username'] ?? 'Utente';
         </section>
 
         <div class="form-fatturazione" id="billing-form" hidden>
-            <strong>Modulo Fatturazione Pro-Forma</strong>
+            <strong>2) Modulo Fatturazione Pro-Forma</strong>
             <form id="invoice-form" method="post" action="/invoice/process-invoice.php">
                 <?php echo csrfInput(); ?>
                 <div class="dati-fattura">
@@ -314,7 +324,7 @@ $username = $_SESSION['username'] ?? 'Utente';
                 <p id="invoice-save-status" role="status" aria-live="polite"></p>
             </form>
 
-            <div class="checklist" id="billing-checklist">
+            <!-- <div class="checklist" id="billing-checklist">
                 <label class="checklist-item" for="beni">
                     <input type="checkbox" id="beni" name="extras" value="beni" checked disabled>
                     <span>Beni e servizi</span>
@@ -327,7 +337,7 @@ $username = $_SESSION['username'] ?? 'Utente';
                     <input type="checkbox" id="causale-checklist" name="extras" value="causale" checked disabled>
                     <span>Causale</span>
                 </label>
-            </div>
+            </div> -->
         </div>
         </div>
 </div>

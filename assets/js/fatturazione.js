@@ -1,3 +1,14 @@
+// Registra un listener su document sostituendo quello della precedente inizializzazione.
+// Serve perché la pagina è caricata via SPA: senza questo, ogni navigazione accumulerebbe
+// listener "orfani" che lavorano su elementi DOM ormai rimossi.
+const bindDocument = (key, eventName, handler) => {
+    window.__fatturazioneListeners = window.__fatturazioneListeners || {};
+    const previous = window.__fatturazioneListeners[key];
+    if (previous) document.removeEventListener(previous.eventName, previous.handler);
+    window.__fatturazioneListeners[key] = { eventName, handler };
+    document.addEventListener(eventName, handler);
+};
+
 const initializeFatturazione = () => {
     const countrySelect = document.querySelector('[data-fatturazione-countries-select]');
     const currencySelect = document.querySelector('[data-fatturazione-currency-select]');
@@ -11,7 +22,6 @@ const initializeFatturazione = () => {
     const billingForm = document.getElementById('billing-form');
     const regimeSelect = document.getElementById('regime-fiscale');
     const beniForm = document.getElementById('beni-servizi-form');
-    const beniCheckbox = document.getElementById('beni');
     const documentDate = document.getElementById('data-documento');
     const dueDate = document.getElementById('data-scadenza');
     const documentNumberInput = document.getElementById('num-doc');
@@ -26,6 +36,7 @@ const initializeFatturazione = () => {
     let invoiceNumberRequest = 0;
 
     const generateInvoiceNumber = () => {
+        if (!documentNumberInput) return;
         const requestId = ++invoiceNumberRequest;
         const csrfToken = invoiceForm?.querySelector('[name="csrf_token"]')?.value || '';
         documentNumberInput.disabled = true;
@@ -126,7 +137,7 @@ const initializeFatturazione = () => {
                 addDetail(metadata, 'Totale', displayValue(invoice.total, invoice.currency));
                 content.append(metadata);
 
-                if (invoice.causale.trim()) {
+                if ((invoice.causale || '').trim()) {
                     const causaleHeading = document.createElement('h3');
                     causaleHeading.textContent = 'Causale';
                     const causaleText = document.createElement('p');
@@ -202,7 +213,7 @@ const initializeFatturazione = () => {
         });
         invoiceListView.querySelector('[data-invoice-action="home"]').addEventListener('click', () => showView('home'));
         invoiceCreateWorkflow.querySelector('[data-invoice-action="home"]').addEventListener('click', () => showView('home'));
-        document.addEventListener('invoice:saved', () => showView('home'));
+        bindDocument('invoice-saved', 'invoice:saved', () => showView('home'));
         invoiceActions.hidden = false;
     }
 
@@ -213,12 +224,12 @@ const initializeFatturazione = () => {
 
     if (invoiceForm && saveInvoiceButton && invoiceForm.dataset.saveInitialized !== 'true') {
         invoiceForm.dataset.saveInitialized = 'true';
-        document.addEventListener('invoice:new', () => {
+        bindDocument('invoice-new-form', 'invoice:new', () => {
             invoiceForm.reset();
             invoiceSaveStatus.textContent = '';
             saveInvoiceButton.textContent = 'Salva fattura';
             saveInvoiceButton.disabled = false;
-            dueDate.min = documentDate.value;
+            if (dueDate && documentDate) dueDate.min = documentDate.value;
             documentNumberInput.removeAttribute('aria-invalid');
             generateInvoiceNumber();
         });
@@ -267,7 +278,7 @@ const initializeFatturazione = () => {
         updateDueDateMinimum();
     }
 
-    if (beniForm && beniForm.dataset.initialized !== 'true') {
+    if (beniForm && regimeSelect && beniForm.dataset.initialized !== 'true') {
         beniForm.dataset.initialized = 'true';
         let nextBeniRowId = beniForm.querySelectorAll('[data-beni-row]').length + 1;
         const summaryList = document.querySelector('[data-vat-summary-list]');
@@ -323,7 +334,7 @@ const initializeFatturazione = () => {
                 summaryList.append(row);
             });
         };
-        summaryList.addEventListener('change', (event) => {
+        summaryList?.addEventListener('change', (event) => {
             if (!event.target.matches('[data-summary-nature]')) return;
             event.target.closest('[data-vat-summary-row]')
                 .querySelector('[data-summary-nature-value]').value = event.target.value;
@@ -341,22 +352,24 @@ const initializeFatturazione = () => {
         const updateIva = () => {
             const isForfettario = regimeSelect.value === 'regime forfettario';
             beniForm.querySelectorAll('select[name="aliquota_iva[]"]').forEach((ivaSelect) => {
+                const row = ivaSelect.closest('[data-beni-row]');
                 ivaSelect.querySelectorAll('option').forEach((option) => {
                     option.disabled = isForfettario ? option.value !== '0' : option.value === '0';
                     option.hidden = !isForfettario && option.value === '0';
                 });
-                ivaSelect.value = isForfettario ? '0' : '22';
+
+                // In ordinario si riusa l'aliquota ricordata per la riga (ordine o scelta manuale), altrimenti 22.
+                const preferred = row.dataset.preferredRate;
+                const preferredIsValid = ['4', '5', '10', '22'].includes(preferred);
+                ivaSelect.value = isForfettario ? '0' : (preferredIsValid ? preferred : '22');
                 ivaSelect.disabled = isForfettario;
-                const hiddenIvaInput = ivaSelect.closest('[data-beni-row]').querySelector('[data-aliquota-iva-value]');
+
+                const hiddenIvaInput = row.querySelector('[data-aliquota-iva-value]');
                 hiddenIvaInput.value = ivaSelect.value;
                 hiddenIvaInput.disabled = !isForfettario;
-                updateTotal(ivaSelect.closest('[data-beni-row]'));
+                updateTotal(row);
             });
             updateSummary();
-        };
-
-        const updateBeniVisibility = () => {
-            beniForm.hidden = !beniCheckbox.checked;
         };
 
         beniForm.addEventListener('input', (event) => {
@@ -369,6 +382,10 @@ const initializeFatturazione = () => {
         beniForm.addEventListener('change', (event) => {
             if (event.target.matches('select[name="aliquota_iva[]"]')) {
                 const row = event.target.closest('[data-beni-row]');
+                // Ricorda le scelte manuali solo in ordinario: in forfettario il valore è forzato a 0.
+                if (regimeSelect.value !== 'regime forfettario') {
+                    row.dataset.preferredRate = event.target.value;
+                }
                 const hiddenIvaInput = row.querySelector('[data-aliquota-iva-value]');
                 hiddenIvaInput.value = event.target.value;
                 updateTotal(row);
@@ -389,6 +406,7 @@ const initializeFatturazione = () => {
             const newRowId = nextBeniRowId;
             nextBeniRowId += 1;
             newRow.dataset.vatSummaryId = `item-${newRowId}`;
+            delete newRow.dataset.preferredRate; // la riga clonata non eredita l'aliquota della prima
             newRow.querySelector('[data-add-beni]').remove();
             newRow.querySelectorAll('input[id], select[id]').forEach((field) => {
                 const baseId = field.id.replace(/-\d+$/, '');
@@ -406,6 +424,7 @@ const initializeFatturazione = () => {
             removeButton.textContent = 'X';
             newRow.querySelector('.form-beni-heading').append(removeButton);
             newRow.querySelectorAll('input').forEach((input) => {
+                if (input.type === 'hidden') return;
                 input.value = input.readOnly ? '0.00' : '';
             });
             newRow.querySelector('[name="aliquota_iva[]"]').value = '0';
@@ -413,17 +432,18 @@ const initializeFatturazione = () => {
             updateIva();
         });
         regimeSelect.addEventListener('change', updateIva);
-        beniCheckbox.addEventListener('change', updateBeniVisibility);
         beniForm.querySelectorAll('[data-beni-row]').forEach(updateTotal);
         updateIva();
         updateSummary();
-        updateBeniVisibility();
-        document.addEventListener('invoice:new', () => {
+        bindDocument('invoice-new-beni', 'invoice:new', () => {
             const rows = [...beniForm.querySelectorAll('[data-beni-row]')];
             rows.slice(1).forEach((row) => row.remove());
-            if (rows[0]) rows[0].dataset.vatSummaryId = 'item-1';
+            if (rows[0]) {
+                rows[0].dataset.vatSummaryId = 'item-1';
+                delete rows[0].dataset.preferredRate;
+            }
             nextBeniRowId = 2;
-            summaryList.replaceChildren();
+            summaryList?.replaceChildren();
             updateIva();
         });
     }
@@ -479,7 +499,7 @@ const initializeFatturazione = () => {
     }
 
     if (!clientCompletion || clientCompletion.dataset.initialized === 'true') {
-        if (profileForm && profileForm.dataset.initialized !== 'true') {
+        if (clientCompletion && profileForm && profileForm.dataset.initialized !== 'true') {
             profileForm.dataset.initialized = 'true';
             profileForm.addEventListener('submit', (event) => {
                 event.preventDefault();
@@ -490,11 +510,56 @@ const initializeFatturazione = () => {
         return;
     }
 
+    // Se mancano gli elementi essenziali del blocco cliente, esce senza marcare come inizializzato.
+    if (!clientForm || !clientSelect || !useClientButton || !clientSelectPanel || !billingForm) {
+        return;
+    }
+
     clientCompletion.dataset.initialized = 'true';
     const clientsUrl = '/invoice/process-client.php';
     const clients = new Map();
-    const fields = ['id', 'client_type', 'company_name', 'first_name', 'last_name', 'vat_number', 'tax_code', 'address', 'city', 'state', 'postal_code', 'country', 'email', 'phone', 'crm_status'];
+    const orderSelect = document.getElementById('order-select');
+    const clientOrders = new Map();
+    const fields = ['id', 'client_type', 'company_name', 'first_name', 'last_name', 'vat_number', 'cf', 'address', 'city', 'state', 'postal_code', 'country', 'email', 'phone', 'crm_status'];
     const modeButton = (mode) => clientCompletion.querySelector(`[data-client-mode="${mode}"]`);
+    const setEditButtonDisabled = (disabled) => {
+        const editButton = modeButton('edit'); // il pulsante "Modifica Cliente" può non esistere nel markup
+        if (editButton) editButton.disabled = disabled;
+    };
+
+    const loadOrdersForClient = (clientId) => {
+        if (!orderSelect) return;
+        clientOrders.clear();
+
+        if (!clientId) {
+            orderSelect.replaceChildren(new Option('Seleziona prima un cliente', ''));
+            return;
+        }
+
+        orderSelect.replaceChildren(new Option('Caricamento ordini...', ''));
+
+        fetch(`${clientsUrl}?action=orders&client_id=${encodeURIComponent(clientId)}`, { credentials: 'same-origin' })
+            .then((response) => response.json())
+            .then((data) => {
+                if (!data.success) throw new Error(data.message || 'Impossibile caricare gli ordini');
+                // Solo ordini confermati (le bozze non sono fatturabili)
+                const orders = (data.orders || []).filter((order) => !order.status || order.status === 'confirmed');
+                if (orders.length === 0) {
+                    orderSelect.replaceChildren(new Option('Nessun ordine disponibile per questo cliente', ''));
+                    return;
+                }
+                orderSelect.replaceChildren(new Option('Seleziona un ordine', ''));
+                orders.forEach((order) => {
+                    clientOrders.set(String(order.id), order);
+                    const label = `Ordine ${order.order_number} (${order.created_at}) - Totale: ${order.total} ${order.currency}`;
+                    orderSelect.append(new Option(label, String(order.id)));
+                });
+            })
+            .catch((error) => {
+                console.error(error);
+                orderSelect.replaceChildren(new Option('Errore caricamento ordini', ''));
+            });
+    };
 
     const showBilling = () => {
         clientCompletion.hidden = true;
@@ -514,7 +579,7 @@ const initializeFatturazione = () => {
         clientForm.elements.company_name.required = !isIndividual;
         clientForm.elements.first_name.required = isIndividual;
         clientForm.elements.last_name.required = isIndividual;
-        clientForm.elements.tax_code.required = isIndividual;
+        clientForm.elements.cf.required = isIndividual;
     };
 
     const fillClientForm = (client) => {
@@ -527,7 +592,7 @@ const initializeFatturazione = () => {
             clientForm.elements.id.value = '';
             clientForm.elements.client_type.value = 'company';
             clientForm.elements.country.value = 'Italia';
-            clientForm.elements.crm_status.value = 'lead';
+            if (clientForm.elements.crm_status) clientForm.elements.crm_status.value = 'lead';
         }
         updateClientTypeFields();
     };
@@ -596,8 +661,70 @@ const initializeFatturazione = () => {
             clientSelect.replaceChildren(new Option('Nessun cliente disponibile', ''));
         });
 
+    // Precompila causale, valuta e righe beni/servizi a partire dall'ordine scelto.
+    const applyOrderToInvoice = (order) => {
+        const causaleField = document.getElementById('causale');
+        if (causaleField) causaleField.value = order.notes || '';
+
+        if (currencySelect) {
+            currencySelect.value = order.currency || 'EUR';
+            currencySelect.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        const items = order.items || [];
+        if (!beniForm || items.length === 0) return;
+
+        // Il regime non viene cambiato automaticamente: si avvisa solo se l'ordine ha IVA e il regime è forfettario.
+        const hasVat = items.some((item) => parseInt(item.vat_rate, 10) > 0);
+        if (hasVat && regimeSelect && regimeSelect.value === 'regime forfettario' && invoiceSaveStatus) {
+            invoiceSaveStatus.textContent = 'Attenzione: l\'ordine contiene righe con IVA, ma il regime selezionato è forfettario. L\'IVA verrà azzerata nella fattura.';
+        }
+
+        const getRows = () => [...beniForm.querySelectorAll('[data-beni-row]')];
+
+        // Prima si crea il numero di righe necessario, poi si compilano in ordine.
+        // (La riga clonata viene inserita subito dopo la prima, quindi compilare mentre si aggiunge sfalserebbe l'ordine.)
+        getRows().slice(1).forEach((row) => row.remove());
+        const addButton = beniForm.querySelector('[data-add-beni]');
+        for (let i = 1; i < items.length; i += 1) {
+            if (addButton) addButton.click();
+        }
+
+        getRows().forEach((row, index) => {
+            const item = items[index];
+            if (!item) return;
+
+            // Aliquota originale dell'ordine, ricordata anche se ora l'IVA è bloccata a 0 (forfettario):
+            // passando a "Regime Ordinario" verrà riapplicata.
+            row.dataset.preferredRate = String(parseInt(item.vat_rate, 10) || 0);
+
+            const descInput = row.querySelector('[name="descrizione[]"]');
+            const qtyInput = row.querySelector('[name="quantita[]"]');
+            const priceInput = row.querySelector('[name="prezzo_unitario[]"]');
+            const ivaSelect = row.querySelector('select[name="aliquota_iva[]"]');
+
+            // I DECIMAL del DB arrivano come "22.00", "1.00": vanno normalizzati.
+            if (descInput) descInput.value = item.description || '';
+            if (qtyInput) qtyInput.value = String(parseFloat(item.quantity) || 1);
+            if (priceInput) priceInput.value = String(parseFloat(item.unit_price) || 0);
+
+            if (ivaSelect) {
+                const wantedRate = String(parseInt(item.vat_rate, 10) || 0);
+                const matchingOption = [...ivaSelect.options].find(
+                    (option) => option.value === wantedRate && !option.disabled
+                );
+                if (matchingOption) ivaSelect.value = wantedRate;
+                ivaSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            [descInput, qtyInput, priceInput].forEach((el) => {
+                if (el) el.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        });
+    };
+
     loadClients();
-    document.addEventListener('invoice:new', () => {
+    bindDocument('invoice-new-client', 'invoice:new', () => {
         const profileCompletion = document.getElementById('profile-completion');
         const needsProfile = Boolean(profileCompletion && profileForm?.dataset.completed !== 'true');
         if (profileCompletion) profileCompletion.hidden = !needsProfile;
@@ -605,7 +732,12 @@ const initializeFatturazione = () => {
         billingForm.hidden = true;
         clientSelect.value = '';
         useClientButton.disabled = true;
-        modeButton('edit').disabled = true;
+        if (orderSelect) {
+            orderSelect.value = '';
+            orderSelect.replaceChildren(new Option('Seleziona un ordine', ''));
+        }
+        clientOrders.clear();
+        setEditButtonDisabled(true);
         fillClientForm(null);
         setMode('select');
         clientSelect.replaceChildren(new Option('Caricamento clienti...', ''));
@@ -613,9 +745,14 @@ const initializeFatturazione = () => {
     });
 
     clientSelect.addEventListener('change', () => {
-        const hasClient = clientSelect.value !== '';
+        const clientId = clientSelect.value;
+        const hasClient = clientId !== '';
         useClientButton.disabled = !hasClient;
-        modeButton('edit').disabled = !hasClient;
+        setEditButtonDisabled(!hasClient);
+        if (orderSelect) {
+            orderSelect.value = '';
+        }
+        loadOrdersForClient(clientId);
     });
 
     clientModeButtons.forEach((button) => {
@@ -629,7 +766,14 @@ const initializeFatturazione = () => {
             return;
         }
 
-        persistSelectedClient(selectedClientId).finally(() => showBilling());
+        persistSelectedClient(selectedClientId).finally(() => {
+            const selectedOrderId = orderSelect ? orderSelect.value : '';
+            if (selectedOrderId && clientOrders.has(selectedOrderId)) {
+                applyOrderToInvoice(clientOrders.get(selectedOrderId));
+            }
+
+            showBilling();
+        });
     });
 
     clientForm.addEventListener('submit', (event) => {
@@ -691,5 +835,15 @@ const initializeFatturazione = () => {
 };
 
 document.addEventListener('DOMContentLoaded', initializeFatturazione);
-const contentObserver = new MutationObserver(initializeFatturazione);
+
+// L'init viene rilanciato a ogni cambio del DOM (pagina caricata via SPA), ma al massimo una volta per frame.
+let initScheduled = false;
+const contentObserver = new MutationObserver(() => {
+    if (initScheduled) return;
+    initScheduled = true;
+    requestAnimationFrame(() => {
+        initScheduled = false;
+        initializeFatturazione();
+    });
+});
 contentObserver.observe(document.body, { childList: true, subtree: true });
