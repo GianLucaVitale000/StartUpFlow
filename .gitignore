@@ -1,0 +1,15 @@
+# Configurazione locale e dati sensibili
+includes/config.php
+
+# Cartelle di sistema e dipendenze
+vendor/
+node_modules/
+
+# Uploads degli utenti
+uploads/*
+!uploads/.gitkeep
+
+# File di log e cache
+*.log
+.DS_Store
+Thumbs.db
