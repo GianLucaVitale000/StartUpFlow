@@ -27,7 +27,7 @@ Le pagine applicative richiedono una sessione autenticata. Gli utenti possono re
 ## Struttura
 
 ```text
-StartUpFlow-by-MandalaTeam/
+StartUpFlow/
 ├── index.php                 # Dashboard protetta
 ├── fatturazione.php          # Modulo fatturazione
 ├── scadenzario.php           # Modulo scadenze

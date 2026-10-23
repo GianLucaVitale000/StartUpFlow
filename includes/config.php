@@ -8,7 +8,7 @@
  */
 
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'login_auth_db');
+define('DB_NAME', 'startupflow_db');
 define('DB_USER', 'root');
 define('DB_PASS', 'its2025');
 define('DB_CHARSET', 'utf8mb4'); 
