@@ -466,7 +466,11 @@ class Order {
 function renderIndex($clients) {
     echo '<div class="service-page">
     <header class="service-header">
-        <a href="/" data-spa="true" class="back-link">← Dashboard</a>
+        <nav aria-label="breadcrumb" class="crm-breadcrumb">
+            <span class="crm-breadcrumb__item">
+                <a href="/" data-spa="true" class="crm-breadcrumb__link">Dashboard</a>
+            </span>
+        </nav>
         <h1>Customer Relationship Management (CRM)</h1>
         <div class="crm-legend">
             <span class="legend-label">Legenda (clicca per info):</span>

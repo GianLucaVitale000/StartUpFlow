@@ -49,28 +49,9 @@ body.dashboard-page {
     margin: 0 auto;
 }
 
-
-/* Stile per il link di ritorno alla dashboard */
-.back-link { 
-    display: inline-block; 
-    margin-top: 0.5rem;
-    margin-bottom: 1rem;
-    padding: 0.5rem 1rem; 
-    background-color: #167c80; 
-    border: none;
-    color: #fff; 
-    text-decoration: none; 
-    font-size: 0.9rem; 
-    font-weight: 500; 
-    border-radius: 4px; 
-    transition: all 0.2s;
-}
-    
-.back-link:hover { 
-    background: #0f5f63;
-}
-
-/* Breadcrumb */
+/*========== 
+Breadcrumb 
+============*/
 .crm-breadcrumb {
   display: flex;
   flex-direction: row;
@@ -108,7 +89,9 @@ body.dashboard-page {
   font-weight: 500;
 }
 
-/* Buttons */
+/* ==========
+    Buttons
+============== */
 .btn {
     display: inline-flex;
     width: fit-content;
@@ -164,7 +147,9 @@ body.dashboard-page {
     background-color: #7f8c8d;
 }
 
-/* Tables */
+/* ===========
+    Tables 
+============== */
 .table-container {
     max-height: 400px;
     overflow-y: auto;
@@ -234,7 +219,7 @@ body.dashboard-page {
     color: #2c3e50;
 }
 
-/* Bell icon*/
+/* ------ Bell icon --------*/
 .next-action-bell {
     background: none;
     border: none;
@@ -254,7 +239,9 @@ body.dashboard-page {
     50%      { transform: rotate(0); }
 }
 
-/* Forms */
+/* ========== 
+    Forms 
+=============*/
 .form-group {
     width: 90%;
     margin-left: 5%;
@@ -300,7 +287,6 @@ body.dashboard-page {
   opacity: 1; 
 }
 
-
 .form-control:focus {
     border-color: #3498db;
     outline: 0;
@@ -339,7 +325,9 @@ textarea.form-control {
     margin-top: 1.5rem;
 }
 
-/* CRM Legend & Popup Modal */
+/* ======================
+CRM Legend & Popup Modal
+========================= */
 .crm-legend {
     display: flex;
     align-items: center;
@@ -454,7 +442,9 @@ textarea.form-control {
     }
 }
 
-/* Modale Nuovo Ordine e scroll ordini dopo 2 elementi */
+/* ================================================
+Modale Nuovo Ordine e scroll ordini dopo 2 elementi
+=================================================== */
 dialog.profile-modal {
     margin: 0;
     position: fixed;
