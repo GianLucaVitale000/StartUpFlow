@@ -99,7 +99,7 @@ In questo caso il servizio email deve essere configurato separatamente. `start-d
 
 ## Database
 
-`database/schema.sql` crea il database `login_auth_db` e le tabelle per:
+`database/schema.sql` crea il database `startupflow_db` e le tabelle per:
 
 - utenti, stato dell'account e tentativi di login;
 - log di audit e rate limiting;
@@ -107,7 +107,7 @@ In questo caso il servizio email deve essere configurato separatamente. `start-d
 - reset password;
 - token Remember Me.
 
-La connessione PDO e centralizzata in `includes/db.php`. Le query applicative devono usare statement preparati.
+La connessione PDO è centralizzata in `includes/db.php`. Le query applicative devono usare statement preparati.
 
 ## Sicurezza
 

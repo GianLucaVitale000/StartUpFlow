@@ -1,10 +1,10 @@
 -- database/schema.sql
 -- SQL schema for the login authentication system
-CREATE DATABASE IF NOT EXISTS login_auth_db
+CREATE DATABASE IF NOT EXISTS startupflow_db
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
 
-USE login_auth_db;
+USE startupflow_db;
 
 -- =====================================================================
 -- AUTENTICAZIONE

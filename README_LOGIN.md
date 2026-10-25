@@ -44,7 +44,6 @@ To prevent abuse, actions are logged in `audit_logs` (`action`, `user_id`, `ip_a
 │   ├── verify-email.php / process-logout.php
 ├── database/                        # Database Schema & Diagrams
 │   ├── schema.sql                   # MySQL Tables definition
-│   └── db_diagram.pdf               # Visual DB Schema reference
 ├── includes/                        # Core Backend Modules
 │   ├── auth.php                     # Session management, CSRF helpers, cookie handling
 │   ├── db.php                       # Core PDO MySQL connection wrapper
