@@ -41,6 +41,9 @@ $taxRegime = [
 	'regime ordinario' => 'ordinario',
 ][$regimeInput] ?? null;
 
+$bolloToClient = (int) ($_POST['bollo_to_client'] ?? 0);
+$bolloAmount = 0.0;
+
 $isValidDate = static function (string $date): bool {
 	$parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
 	$errors = DateTimeImmutable::getLastErrors();
@@ -132,6 +135,24 @@ if ($invoiceTotal > 99999999.99) {
 	$respond(422, ['success' => false, 'message' => 'Il totale supera il limite consentito']);
 }
 
+if ($taxRegime === 'forfettario' && $bolloToClient && $invoiceTotal > 77.47) {
+	$bolloAmount = 2.00;
+	$invoiceTotal = round($invoiceTotal + $bolloAmount, 2);
+
+	$lineItems[] = [
+		'description' => 'Bollo 2,00 € - Pagamento tramite bollettino postale o bonifico',
+		'quantity' => 1,
+		'unit_price' => number_format($bolloAmount, 2, '.', ''),
+		'vat_rate' => 0,
+		'nature' => 'fuori_campo',
+		'taxable_amount' => number_format($bolloAmount, 2, '.', ''),
+		'tax_amount' => '0.00',
+		'additional_expenses' => '0.00',
+		'legal_reference' => 'ART. 13, TARIFFA ALLEGATA AL D.P.R. 642/1972',
+		'line_total' => number_format($bolloAmount, 2, '.', ''),
+	];
+}
+
 try {
 	$currencyJson = file_get_contents(__DIR__ . '/../assets/data/currency.json');
 	$currencyList = json_decode($currencyJson === false ? '' : $currencyJson, true, 512, JSON_THROW_ON_ERROR);
@@ -152,7 +173,7 @@ try {
 	}
 
 	$checkNumber = $pdo->prepare('SELECT 1 FROM invoices WHERE document_number = :document_number LIMIT 1');
-	$insertInvoice = $pdo->prepare('INSERT INTO invoices (client_id, user_id, document_number, issue_date, due_date, currency, tax_regime, total) VALUES (:client_id, :user_id, :document_number, :issue_date, :due_date, :currency, :tax_regime, :total)');
+	$insertInvoice = $pdo->prepare('INSERT INTO invoices (client_id, user_id, document_number, issue_date, due_date, currency, tax_regime, total, bollo, bollo_to_client) VALUES (:client_id, :user_id, :document_number, :issue_date, :due_date, :currency, :tax_regime, :total, :bollo, :bollo_to_client)');
 	$documentNumberExists = static function (string $number) use ($checkNumber, $storageDirectory): bool {
 		$checkNumber->execute([':document_number' => $number]);
 		return $checkNumber->fetchColumn() !== false || is_file($storageDirectory . '/' . $number . '.xml');
@@ -236,6 +257,8 @@ try {
 				':currency' => $currency,
 				':tax_regime' => $taxRegime,
 				':total' => number_format($invoiceTotal, 2, '.', ''),
+				':bollo' => number_format($bolloAmount, 2, '.', ''),
+				':bollo_to_client' => $bolloToClient ? 1 : 0,
 			]);
 			$invoiceId = (int) $pdo->lastInsertId();
 			$pdo->commit();

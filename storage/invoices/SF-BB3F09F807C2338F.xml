@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice documentNumber="SF-BB3F09F807C2338F">
+  <Causale>manutenzione sito</Causale>
+  <Items>
+    <Item>
+      <Description>sito</Description>
+      <Quantity>1</Quantity>
+      <UnitPrice>100.00</UnitPrice>
+      <VatRate>0</VatRate>
+      <Nature>non_soggetta</Nature>
+      <TaxableAmount>100.00</TaxableAmount>
+      <TaxAmount>0.00</TaxAmount>
+      <AdditionalExpenses>0.00</AdditionalExpenses>
+      <LegalReference></LegalReference>
+      <LineTotal>100.00</LineTotal>
+    </Item>
+    <Item>
+      <Description>Bollo 2,00 € - Pagamento tramite bollettino postale o bonifico</Description>
+      <Quantity>1</Quantity>
+      <UnitPrice>2.00</UnitPrice>
+      <VatRate>0</VatRate>
+      <Nature>fuori_campo</Nature>
+      <TaxableAmount>2.00</TaxableAmount>
+      <TaxAmount>0.00</TaxAmount>
+      <AdditionalExpenses>0.00</AdditionalExpenses>
+      <LegalReference>ART. 13, TARIFFA ALLEGATA AL D.P.R. 642/1972</LegalReference>
+      <LineTotal>2.00</LineTotal>
+    </Item>
+  </Items>
+</Invoice>

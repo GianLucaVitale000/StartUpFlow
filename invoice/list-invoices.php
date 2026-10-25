@@ -28,7 +28,7 @@ if ($userId === null) {
 try {
 	$statement = $pdo->prepare(
 		' SELECT i.id, i.document_number, i.issue_date, i.due_date, i.currency,
-		        i.tax_regime, i.total, i.is_paid, c.client_type, c.company_name,
+		        i.tax_regime, i.total, i.bollo, i.bollo_to_client, i.is_paid, c.client_type, c.company_name,
 		        c.first_name, c.last_name
 		 FROM invoices i
 		 INNER JOIN clients c ON c.id = i.client_id
@@ -57,6 +57,7 @@ try {
 			: trim($invoice['first_name'] . ' ' . $invoice['last_name']);
 		$invoice['client_name'] = $clientName !== '' ? $clientName : 'Cliente';
 		$invoice['is_paid'] = (bool) $invoice['is_paid'];
+		$invoice['bollo_to_client'] = (bool) $invoice['bollo_to_client'];
 		$invoice['items'] = [];
 		$invoice['causale'] = '';
 		$invoice['xml_available'] = false;

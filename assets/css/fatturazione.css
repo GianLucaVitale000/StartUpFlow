@@ -412,6 +412,25 @@ body.dashboard-page {
 	gap: 16px;
 }
 
+.dati-fattura__bollo {
+	grid-column: 1 / -1;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin: 1rem 0;
+}
+
+.dati-fattura__bollo[hidden] {
+	display: none !important;
+}
+
+.dati-fattura__bollo label {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 700;
+	color: #3f4657;
+}
+
 .dati-fattura label {
 	display: grid;
 	align-content: start;

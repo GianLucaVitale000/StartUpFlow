@@ -133,6 +133,9 @@ const initializeFatturazione = () => {
                 addDetail(metadata, 'Data documento', invoice.issue_date);
                 addDetail(metadata, 'Scadenza', invoice.due_date);
                 addDetail(metadata, 'Regime fiscale', invoice.tax_regime);
+                if (invoice.bollo_to_client && Number(invoice.bollo) > 0) {
+                    addDetail(metadata, 'Marca da bollo addebitata', displayValue(invoice.bollo, invoice.currency));
+                }
                 addDetail(metadata, 'Stato pagamento', invoice.is_paid ? 'Pagata' : 'Da pagare');
                 addDetail(metadata, 'Totale', displayValue(invoice.total, invoice.currency));
                 content.append(metadata);
@@ -283,6 +286,25 @@ const initializeFatturazione = () => {
         let nextBeniRowId = beniForm.querySelectorAll('[data-beni-row]').length + 1;
         const summaryList = document.querySelector('[data-vat-summary-list]');
         const summaryTemplate = document.querySelector('[data-vat-summary-template]');
+        const bolloContainer = document.getElementById('bollo-container');
+        const bolloCheckbox = document.getElementById('bollo-to-client');
+
+        const updateBolloVisibility = () => {
+            if (!bolloContainer || !bolloCheckbox) return;
+            const isForfettario = regimeSelect.value === 'regime forfettario';
+            let totalTaxable = 0;
+            beniForm.querySelectorAll('[data-beni-row]').forEach((row) => {
+                const quantity = Number(row.querySelector('[name="quantita[]"]').value) || 0;
+                const unitPrice = Number(row.querySelector('[name="prezzo_unitario[]"]').value) || 0;
+                totalTaxable += quantity * unitPrice;
+            });
+            const showBollo = isForfettario && totalTaxable > 77.47;
+            bolloContainer.hidden = !showBollo;
+            if (!showBollo) {
+                bolloCheckbox.checked = false;
+            }
+        };
+
         beniForm.querySelectorAll('[data-beni-row]').forEach((itemRow, index) => {
             itemRow.dataset.vatSummaryId = `item-${index + 1}`;
         });
@@ -333,6 +355,7 @@ const initializeFatturazione = () => {
                 row.querySelector('[data-summary-tax]').value = (taxable * (rate / 100)).toFixed(2);
                 summaryList.append(row);
             });
+            updateBolloVisibility();
         };
         summaryList?.addEventListener('change', (event) => {
             if (!event.target.matches('[data-summary-nature]')) return;

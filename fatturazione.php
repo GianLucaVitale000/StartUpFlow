@@ -246,7 +246,7 @@ $username = $_SESSION['username'] ?? 'Utente';
             <form id="invoice-form" method="post" action="/invoice/process-invoice.php">
                 <?php echo csrfInput(); ?>
                 <div class="dati-fattura">
-                    <label for="regime-fiscale">Regime Fiscale valido per la fattura che si sta generando:</label>
+                    <label for="regime-fiscale">Regime Fiscale:</label>
                     <select id="regime-fiscale" name="regime_fiscale" required>
                         <option value="regime forfettario">Regime Forfettario</option>
                         <option value="regime ordinario">Regime Ordinario</option>
@@ -261,6 +261,10 @@ $username = $_SESSION['username'] ?? 'Utente';
                     </select>
                     <label for="num-doc">Numero Documento:</label>
                     <input id="num-doc" name="document_number" type="text" placeholder="Generazione numero..." readonly disabled required>
+                </div>
+                <div class="dati-fattura__bollo" id="bollo-container" hidden>
+                    <input type="checkbox" id="bollo-to-client" name="bollo_to_client" value="1">
+                    <label for="bollo-to-client">Addebito marca da bollo (€ 2,00) al cliente (imponibile > € 77,47)</label>
                 </div>
                 <div id="beni-servizi-form">
                     <div class="form-beni" data-beni-row>
