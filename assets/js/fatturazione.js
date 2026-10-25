@@ -1,4 +1,4 @@
-// Registra un listener su document sostituendo quello della precedente inizializzazione.
+//// Registra un listener su document sostituendo quello della precedente inizializzazione.
 // Serve perché la pagina è caricata via SPA: senza questo, ogni navigazione accumulerebbe
 // listener "orfani" che lavorano su elementi DOM ormai rimossi.
 const bindDocument = (key, eventName, handler) => {
@@ -173,6 +173,39 @@ const initializeFatturazione = () => {
                     content.append(fileStatus);
                 }
 
+                if (invoice.cassa) {
+                    const natureLabels = { non_soggetta: 'Non soggetta', esente: 'Esente', fuori_campo: 'Fuori campo IVA' };
+                    const cassaHeading = document.createElement('h3');
+                    cassaHeading.textContent = 'Cassa previdenziale';
+                    const cassaList = document.createElement('ul');
+                    cassaList.className = 'invoice-item-list';
+                    const addCassaRow = (label, amount) => {
+                        const row = document.createElement('li');
+                        const text = document.createElement('span');
+                        text.textContent = label;
+                        row.append(text);
+                        if (amount !== null) {
+                            const value = document.createElement('strong');
+                            value.textContent = displayValue(amount, invoice.currency);
+                            row.append(value);
+                        }
+                        cassaList.append(row);
+                    };
+                    const cassa = invoice.cassa;
+                    addCassaRow(
+                        `${cassa.type_label || cassa.type} · ${cassa.rate}% su ${displayValue(cassa.taxable_amount, invoice.currency)}`,
+                        cassa.amount
+                    );
+                    if (Number(cassa.vat_rate) > 0) {
+                        addCassaRow(`IVA ${Number(cassa.vat_rate)}% sul contributo`, cassa.tax_amount);
+                    } else if (cassa.nature) {
+                        addCassaRow(`Contributo senza IVA · ${natureLabels[cassa.nature] || cassa.nature}`, null);
+                    }
+                    if (cassa.withholding === 'SI') addCassaRow('Concorre alla base della ritenuta', null);
+                    if (cassa.reference) addCassaRow(`Riferimento amministrazione: ${cassa.reference}`, null);
+                    content.append(cassaHeading, cassaList);
+                }
+
                 entry.append(content);
                 invoiceList.append(entry);
             });
@@ -289,16 +322,145 @@ const initializeFatturazione = () => {
         const bolloContainer = document.getElementById('bollo-container');
         const bolloCheckbox = document.getElementById('bollo-to-client');
 
-        const updateBolloVisibility = () => {
-            if (!bolloContainer || !bolloCheckbox) return;
-            const isForfettario = regimeSelect.value === 'regime forfettario';
-            let totalTaxable = 0;
+        const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+        const getTaxableTotal = () => {
+            let total = 0;
             beniForm.querySelectorAll('[data-beni-row]').forEach((row) => {
                 const quantity = Number(row.querySelector('[name="quantita[]"]').value) || 0;
                 const unitPrice = Number(row.querySelector('[name="prezzo_unitario[]"]').value) || 0;
-                totalTaxable += quantity * unitPrice;
+                total += quantity * unitPrice;
             });
-            const showBollo = isForfettario && totalTaxable > 77.47;
+            return roundMoney(total);
+        };
+
+        // ---- Cassa previdenziale (blocco DatiCassaPrevidenziale della FatturaPA) ----
+        // Il server ricalcola tutto: questi campi servono solo a mostrare l'anteprima all'utente.
+        const cassaForm = document.getElementById('cassa-form');
+        const cassaSelect = document.getElementById('cassa-tipo');
+        const cassaDetails = cassaForm ? cassaForm.querySelector('[data-cassa-details]') : null;
+        const cassaRate = document.getElementById('cassa-aliquota');
+        const cassaTaxable = document.getElementById('cassa-imponibile');
+        const cassaVat = document.getElementById('cassa-aliquota-iva');
+        const cassaNature = document.getElementById('cassa-natura');
+        const cassaAmount = document.getElementById('cassa-importo');
+        const cassaTax = document.getElementById('cassa-imposta');
+        const cassaWithholding = document.getElementById('cassa-ritenuta');
+        const cassaReady = Boolean(cassaSelect && cassaDetails && cassaRate && cassaTaxable && cassaVat
+            && cassaNature && cassaAmount && cassaTax && cassaWithholding);
+        const cassaCatalog = new Map();
+        let cassaContribution = 0;
+
+        const updateCassa = () => {
+            if (!cassaReady) {
+                cassaContribution = 0;
+                return;
+            }
+            const hasCassa = cassaSelect.value !== '';
+            const isForfettario = regimeSelect.value === 'regime forfettario';
+            cassaDetails.hidden = !hasCassa;
+            cassaRate.required = hasCassa;
+            cassaTaxable.required = hasCassa;
+
+            if (!hasCassa) {
+                cassaContribution = 0;
+                cassaAmount.value = '';
+                cassaTax.value = '';
+                return;
+            }
+
+            // IVA sul contributo: in forfettario sempre 0, in ordinario si ricorda la scelta (default 22).
+            cassaVat.disabled = isForfettario;
+            cassaVat.value = isForfettario ? '0' : (cassaVat.dataset.preferred || '22');
+            const vatRate = Number(cassaVat.value) || 0;
+
+            // Natura: richiesta solo con aliquota 0; in forfettario è fissa.
+            if (vatRate > 0) {
+                cassaNature.value = '';
+                cassaNature.disabled = true;
+                cassaNature.required = false;
+            } else if (isForfettario) {
+                cassaNature.value = 'non_soggetta';
+                cassaNature.disabled = true;
+                cassaNature.required = false;
+            } else {
+                if (cassaNature.value === '') cassaNature.value = 'non_soggetta';
+                cassaNature.disabled = false;
+                cassaNature.required = true;
+            }
+
+            // I forfettari non applicano ritenuta d'acconto.
+            cassaWithholding.disabled = isForfettario;
+            if (isForfettario) cassaWithholding.checked = false;
+
+            // L'imponibile segue le righe finché l'utente non lo modifica a mano.
+            if (cassaTaxable.dataset.manual !== 'true') cassaTaxable.value = getTaxableTotal().toFixed(2);
+
+            const rate = Number(cassaRate.value) || 0;
+            const taxable = Number(cassaTaxable.value) || 0;
+            cassaContribution = roundMoney(taxable * rate / 100);
+            cassaAmount.value = cassaContribution.toFixed(2);
+            cassaTax.value = roundMoney(cassaContribution * vatRate / 100).toFixed(2);
+        };
+
+        const refreshCassa = () => {
+            updateCassa();
+            updateBolloVisibility();
+        };
+
+        if (cassaReady) {
+            cassaSelect.disabled = true;
+            fetch('/assets/data/casse-previdenziali.json')
+                .then((response) => {
+                    if (!response.ok) throw new Error('Impossibile caricare le casse previdenziali');
+                    return response.json();
+                })
+                .then((casse) => {
+                    cassaSelect.replaceChildren(new Option('Nessuna cassa previdenziale', ''));
+                    casse.forEach((cassa) => {
+                        cassaCatalog.set(cassa.value, cassa);
+                        cassaSelect.append(new Option(`${cassa.value} – ${cassa.name}`, cassa.value));
+                    });
+                    cassaSelect.disabled = false;
+                })
+                .catch((error) => {
+                    console.error(error);
+                    cassaSelect.replaceChildren(new Option('Impossibile caricare le casse previdenziali', ''));
+                });
+
+            // Solo i campi numerici: i select si gestiscono su "change", perché "input" scatta prima
+            // e un refresh a quel punto ripristinerebbe il valore precedente.
+            cassaForm.addEventListener('input', (event) => {
+                if (!event.target.matches('input[type="number"]')) return;
+                if (event.target === cassaTaxable) cassaTaxable.dataset.manual = 'true';
+                refreshCassa();
+            });
+            cassaForm.addEventListener('change', (event) => {
+                if (event.target === cassaSelect) {
+                    const entry = cassaCatalog.get(cassaSelect.value);
+                    cassaRate.value = entry && entry.default_rate != null ? Number(entry.default_rate).toFixed(2) : '';
+                    cassaTaxable.dataset.manual = 'false';
+                } else if (event.target === cassaTaxable && cassaTaxable.value === '') {
+                    cassaTaxable.dataset.manual = 'false'; // campo svuotato: torna al calcolo automatico
+                } else if (event.target === cassaVat && regimeSelect.value !== 'regime forfettario') {
+                    cassaVat.dataset.preferred = cassaVat.value;
+                }
+                refreshCassa();
+            });
+            if (invoiceForm) {
+                invoiceForm.addEventListener('reset', () => {
+                    cassaTaxable.dataset.manual = 'false';
+                    delete cassaVat.dataset.preferred;
+                    setTimeout(refreshCassa, 0); // il reset dei campi avviene dopo l'evento
+                });
+            }
+        }
+
+        const updateBolloVisibility = () => {
+            if (!bolloContainer || !bolloCheckbox) return;
+            const isForfettario = regimeSelect.value === 'regime forfettario';
+            // Il contributo cassa concorre al totale non soggetto a IVA su cui si valuta il bollo.
+            const totalTaxable = getTaxableTotal() + cassaContribution;
+            const showBollo = isForfettario && roundMoney(totalTaxable) > 77.47;
             bolloContainer.hidden = !showBollo;
             if (!showBollo) {
                 bolloCheckbox.checked = false;
@@ -355,7 +517,7 @@ const initializeFatturazione = () => {
                 row.querySelector('[data-summary-tax]').value = (taxable * (rate / 100)).toFixed(2);
                 summaryList.append(row);
             });
-            updateBolloVisibility();
+            refreshCassa();
         };
         summaryList?.addEventListener('change', (event) => {
             if (!event.target.matches('[data-summary-nature]')) return;

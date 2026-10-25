@@ -658,6 +658,39 @@ body.dashboard-page {
 	color: #4a5160;
 }
 
+#cassa-form {
+	margin-top: 1.5rem;
+}
+
+#cassa-form h3 {
+	margin: 0 0 1rem;
+	font-size: 1.1rem;
+	color: #3f4657;
+}
+
+.cassa-grid + .cassa-grid {
+	margin-top: 1rem;
+}
+
+.cassa-grid[hidden] {
+	display: none !important;
+}
+
+.cassa-grid__wide {
+	grid-column: 2 / -1;
+}
+
+.cassa-grid input[type="checkbox"] {
+	width: auto;
+	min-height: 0;
+	justify-self: start;
+}
+
+.cassa-grid select:disabled {
+	background: #eff2f7;
+	color: #4a5160;
+}
+
 #causale-form {
 	display: grid;
 	gap: 0.65rem;

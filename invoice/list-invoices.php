@@ -37,6 +37,28 @@ try {
 	);
 	$statement->execute([':user_id' => $userId]);
 	$invoices = [];
+
+	// Nomi leggibili delle casse previdenziali (se il catalogo non è leggibile si mostra solo il codice)
+	$cassaNames = [];
+	$cassaJson = @file_get_contents(dirname(__DIR__) . '/assets/data/casse-previdenziali.json');
+	$cassaCatalog = $cassaJson === false ? null : json_decode($cassaJson, true);
+	if (is_array($cassaCatalog)) {
+		foreach ($cassaCatalog as $cassaEntry) {
+			if (isset($cassaEntry['value'], $cassaEntry['name'])) {
+				$cassaNames[(string) $cassaEntry['value']] = (string) $cassaEntry['name'];
+			}
+		}
+	}
+	$cassaFields = [
+		'TipoCassa' => 'type',
+		'AlCassa' => 'rate',
+		'ImportoContributoCassa' => 'amount',
+		'ImponibileCassa' => 'taxable_amount',
+		'AliquotaIVA' => 'vat_rate',
+		'Ritenuta' => 'withholding',
+		'Natura' => 'nature',
+		'RiferimentoAmministrazione' => 'reference',
+	];
 	$storageDirectory = dirname(__DIR__) . '/storage/invoices';
 	$itemFields = [
 		'Description' => 'description',
@@ -61,6 +83,7 @@ try {
 		$invoice['items'] = [];
 		$invoice['causale'] = '';
 		$invoice['xml_available'] = false;
+		$invoice['cassa'] = null;
 		$documentNumber = (string) $invoice['document_number'];
 
 		if (preg_match('/^SF-[A-F0-9]{16}$/', $documentNumber)) {
@@ -73,6 +96,22 @@ try {
 					$causaleNode = $xml->getElementsByTagName('Causale')->item(0);
 					if ($causaleNode instanceof DOMElement) {
 						$invoice['causale'] = $causaleNode->textContent;
+					}
+					$cassaNode = $xml->getElementsByTagName('Cassa')->item(0);
+					if ($cassaNode instanceof DOMElement) {
+						$cassa = [];
+						foreach ($cassaNode->childNodes as $fieldNode) {
+							if ($fieldNode instanceof DOMElement && isset($cassaFields[$fieldNode->tagName])) {
+								$cassa[$cassaFields[$fieldNode->tagName]] = $fieldNode->textContent;
+							}
+						}
+						if (isset($cassa['type'])) {
+							$cassa['type_label'] = $cassaNames[$cassa['type']] ?? $cassa['type'];
+						}
+						if (isset($cassa['amount'], $cassa['vat_rate'])) {
+							$cassa['tax_amount'] = number_format(round((float) $cassa['amount'] * (float) $cassa['vat_rate'] / 100, 2), 2, '.', '');
+						}
+						$invoice['cassa'] = $cassa;
 					}
 					foreach ($xml->getElementsByTagName('Item') as $itemNode) {
 						$item = [];

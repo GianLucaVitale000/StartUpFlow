@@ -319,6 +319,46 @@ $username = $_SESSION['username'] ?? 'Utente';
                         </div>
                     </template>
                 </div>
+                <div id="cassa-form">
+                    <h3>Cassa previdenziale</h3>
+                    <div class="form-riepilogo">
+                        <div class="vat-summary-grid cassa-grid">
+                            <label for="cassa-tipo">Cassa</label>
+                            <select id="cassa-tipo" name="cassa_tipo" class="cassa-grid__wide">
+                                <option value="">Caricamento casse previdenziali...</option>
+                            </select>
+                        </div>
+                        <div class="vat-summary-grid cassa-grid" data-cassa-details hidden>
+                            <label for="cassa-aliquota">Aliquota cassa (%)</label>
+                            <input type="number" id="cassa-aliquota" name="cassa_aliquota" min="0.01" max="100" step="0.01" inputmode="decimal" placeholder="Es. 4.00">
+                            <label for="cassa-imponibile">Imponibile cassa</label>
+                            <input type="number" id="cassa-imponibile" name="cassa_imponibile" min="0.01" step="0.01" inputmode="decimal">
+                            <label for="cassa-aliquota-iva">Aliquota IVA contributo</label>
+                            <select id="cassa-aliquota-iva" name="cassa_aliquota_iva">
+                                <option value="0">0%</option>
+                                <option value="4">4%</option>
+                                <option value="5">5%</option>
+                                <option value="10">10%</option>
+                                <option value="22" selected>22%</option>
+                            </select>
+                            <label for="cassa-natura">Natura</label>
+                            <select id="cassa-natura" name="cassa_natura">
+                                <option value="">Non applicabile</option>
+                                <option value="non_soggetta">Non soggetta</option>
+                                <option value="esente">Esente</option>
+                                <option value="fuori_campo">Fuori campo IVA</option>
+                            </select>
+                            <label for="cassa-importo">Contributo cassa</label>
+                            <input type="number" id="cassa-importo" step="0.01" readonly tabindex="-1">
+                            <label for="cassa-imposta">IVA sul contributo</label>
+                            <input type="number" id="cassa-imposta" step="0.01" readonly tabindex="-1">
+                            <label for="cassa-riferimento">Riferimento amministrazione</label>
+                            <input type="text" id="cassa-riferimento" name="cassa_riferimento" maxlength="20" placeholder="Facoltativo">
+                            <label for="cassa-ritenuta">Concorre alla ritenuta</label>
+                            <input type="checkbox" id="cassa-ritenuta" name="cassa_ritenuta" value="1">
+                        </div>
+                    </div>
+                </div>
                 <div id="causale-form">
                     <h3>Causale</h3>
                     <label for="causale">Motivo o riferimento della fattura</label>

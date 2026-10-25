@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice documentNumber="SF-36C5EBDD0EA6BFF4">
+  <Causale></Causale>
+  <Cassa>
+    <TipoCassa>TC01</TipoCassa>
+    <AlCassa>4.00</AlCassa>
+    <ImportoContributoCassa>8.64</ImportoContributoCassa>
+    <ImponibileCassa>215.90</ImponibileCassa>
+    <AliquotaIVA>0.00</AliquotaIVA>
+    <Natura>non_soggetta</Natura>
+  </Cassa>
+  <Items>
+    <Item>
+      <Description>matite</Description>
+      <Quantity>100</Quantity>
+      <UnitPrice>2.00</UnitPrice>
+      <VatRate>0</VatRate>
+      <Nature>non_soggetta</Nature>
+      <TaxableAmount>200.00</TaxableAmount>
+      <TaxAmount>0.00</TaxAmount>
+      <AdditionalExpenses>0.00</AdditionalExpenses>
+      <LegalReference></LegalReference>
+      <LineTotal>200.00</LineTotal>
+    </Item>
+    <Item>
+      <Description>evidenziatori</Description>
+      <Quantity>10</Quantity>
+      <UnitPrice>1.59</UnitPrice>
+      <VatRate>0</VatRate>
+      <Nature>non_soggetta</Nature>
+      <TaxableAmount>15.90</TaxableAmount>
+      <TaxAmount>0.00</TaxAmount>
+      <AdditionalExpenses>0.00</AdditionalExpenses>
+      <LegalReference></LegalReference>
+      <LineTotal>15.90</LineTotal>
+    </Item>
+    <Item>
+      <Description>Bollo 2,00 € - Pagamento tramite bollettino postale o bonifico</Description>
+      <Quantity>1</Quantity>
+      <UnitPrice>2.00</UnitPrice>
+      <VatRate>0</VatRate>
+      <Nature>fuori_campo</Nature>
+      <TaxableAmount>2.00</TaxableAmount>
+      <TaxAmount>0.00</TaxAmount>
+      <AdditionalExpenses>0.00</AdditionalExpenses>
+      <LegalReference>ART. 13, TARIFFA ALLEGATA AL D.P.R. 642/1972</LegalReference>
+      <LineTotal>2.00</LineTotal>
+    </Item>
+  </Items>
+</Invoice>

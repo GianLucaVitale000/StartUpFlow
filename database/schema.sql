@@ -206,6 +206,8 @@ CREATE TABLE IF NOT EXISTS invoices (
     total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     bollo DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     bollo_to_client TINYINT(1) NOT NULL DEFAULT 0,
+    cassa_type CHAR(4) NULL,                              -- TipoCassa FatturaPA (TC01...TC22), NULL = nessuna cassa
+    cassa_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,     -- ImportoContributoCassa (IVA sul contributo esclusa)
     is_paid BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
