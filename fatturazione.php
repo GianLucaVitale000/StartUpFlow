@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/profile-fiscal.php';
 
 // Se non è autenticato, reindirizza
 if (!isLoggedIn()) {
@@ -25,37 +26,13 @@ if (!$isAjax) {
 
 $escape = static fn ($value): string => htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
 
-$firstName = $escape($_SESSION['first_name'] ?? '');
-$lastName = $escape($_SESSION['last_name'] ?? '');
-$birthDate = $escape($_SESSION['birth_date'] ?? '');
-$birthPlace = $escape($_SESSION['birth_place'] ?? '');
-$birthCountry = $escape($_SESSION['birth_country'] ?? '');
-$cf = $escape($_SESSION['cf'] ?? '');
-$address = $escape($_SESSION['address'] ?? '');
-$city = $escape($_SESSION['city'] ?? '');
-$postalCode = $escape($_SESSION['postal_code'] ?? '');
-
-$isProfileOk = true;
-
-$requiredFields = [
-    $firstName,
-    $lastName,
-    $birthDate,
-    $birthPlace,
-    $birthCountry,
-    $cf,
-    $address,
-    $city,
-    $postalCode
-];
-
-if (in_array('', array_map('trim', $requiredFields), true)) {
-    $isProfileOk = false;
-}
-
-// Recupera dati utente (opzionale, per personalizzare)
+// Il profilo è "completo" quando ci sono i dati fiscali del cedente richiesti da FatturaPA
+// (partita IVA, regime, sede...), letti dal DB: la sessione può essere vecchia.
 global $pdo;
 $userId = currentUserId();
+$fiscalRow = $userId !== null ? loadUserFiscalProfile($pdo, $userId) : [];
+$missingFiscal = fiscalProfileMissing($fiscalRow);
+$isProfileOk = $missingFiscal === [];
 $username = $_SESSION['username'] ?? 'Utente';
 ?>
 <div class="service-page fatturazione">
@@ -98,53 +75,10 @@ $username = $_SESSION['username'] ?? 'Utente';
 
         <?php if (!$isProfileOk): ?>
         <section class="profile-completion" id="profile-completion">
-            <strong>Completa il tuo profilo per continuare</strong>
-            <p>Inserisci tutti i dati richiesti per procedere con la fatturazione.</p>
-            <form class="profile-modal__grid" id="profile-completion-form">
-                <?php echo csrfInput(); ?>
-                <label class="profile-modal__field">
-                    <span>Nome</span>
-                    <input type="text" name="nome" value="<?php echo $firstName; ?>" placeholder="Inserisci il nome" required>
-                </label>
-                <label class="profile-modal__field">
-                    <span>Cognome</span>
-                    <input type="text" name="cognome" value="<?php echo $lastName; ?>" placeholder="Inserisci il cognome" required>
-                </label>
-                <label class="profile-modal__field">
-                    <span>Data di nascita</span>
-                    <input type="date" name="data_di_nascita" value="<?php echo $birthDate; ?>" required>
-                </label>
-                <label class="profile-modal__field">
-                    <span>Luogo di nascita</span>
-                    <input type="text" name="luogo_di_nascita" value="<?php echo $birthPlace; ?>" placeholder="Inserisci il luogo di nascita" required>
-                </label>
-                <label class="profile-modal__field">
-                    <span>Stato di nascita</span>
-                    <select name="stato" data-fatturazione-countries-select data-selected-country="<?php echo $birthCountry; ?>" required>
-                        <option value="" selected>Seleziona uno Stato</option>
-                    </select>
-                </label>
-                <label class="profile-modal__field">
-                    <span>Codice fiscale</span>
-                    <input type="text" name="codice_fiscale" value="<?php echo $cf; ?>" placeholder="Inserisci il codice fiscale" maxlength="16" required>
-                </label>
-                <label class="profile-modal__field profile-modal__field--full">
-                    <span>Indirizzo</span>
-                    <input type="text" name="indirizzo" value="<?php echo $address; ?>" placeholder="Inserisci l'indirizzo" required>
-                </label>
-                <label class="profile-modal__field">
-                    <span>Città</span>
-                    <input type="text" name="citta" value="<?php echo $city; ?>" placeholder="Inserisci la città" required>
-                </label>
-                <label class="profile-modal__field">
-                    <span>CAP</span>
-                    <input type="text" name="cap" value="<?php echo $postalCode; ?>" placeholder="Inserisci il CAP" inputmode="numeric" maxlength="5" required>
-                </label>
-                <footer class="profile-modal__actions" style="grid-column: 1 / -1;">
-                    <button type="submit" class="profile-modal__save">Avanti</button>
-                </footer>
-                <p id="profile-completion-status" role="status" aria-live="polite" style="grid-column: 1 / -1;"></p>
-            </form>
+            <strong>Completa i dati fiscali per continuare</strong>
+            <p>Per emettere fatture elettroniche servono i dati del cedente (partita IVA, regime fiscale, sede, codice fiscale valido).
+               Mancano o non sono validi: <?php echo $escape(implode(', ', array_values($missingFiscal))); ?>.</p>
+            <button type="button" class="profile-modal__save" data-open-profile-modal>Apri il profilo</button>
         </section>
         <?php endif; ?>
 
@@ -385,4 +319,3 @@ $username = $_SESSION['username'] ?? 'Utente';
         </div>
         </div>
 </div>
-

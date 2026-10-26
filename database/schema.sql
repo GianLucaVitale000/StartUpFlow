@@ -115,18 +115,40 @@ CREATE TABLE IF NOT EXISTS remember_me_tokens (
 
 CREATE TABLE IF NOT EXISTS users_profiles (
   user_id INT UNSIGNED PRIMARY KEY,
+  entity_type ENUM('individual','company') NOT NULL DEFAULT 'individual',
   first_name VARCHAR(100),
   last_name VARCHAR(100),
+  company_name VARCHAR(80) NULL,                           -- FatturaPA 1.2.1.3.1 Denominazione
   birth_date DATE,
   birth_place VARCHAR(100),
   birth_country VARCHAR(100),
-  cf VARCHAR(16) UNIQUE,
-  address VARCHAR(255),
-  city VARCHAR(100),
-  postal_code VARCHAR(10),
+  cf VARCHAR(16) UNIQUE,                                   -- 1.2.1.2 CodiceFiscale
+  vat_country CHAR(2) NOT NULL DEFAULT 'IT',               -- 1.2.1.1.1 IdPaese
+  vat_number VARCHAR(28) NULL,                             -- 1.2.1.1.2 IdCodice (P.IVA)
+  tax_regime CHAR(4) NULL,                                 -- 1.2.1.8 RegimeFiscale (RF01, RF19...)
+  address VARCHAR(255),                                    -- 1.2.2.1 Indirizzo (max 60 per lo SdI, validato in app)
+  street_number VARCHAR(8) NULL,                           -- 1.2.2.2 NumeroCivico
+  city VARCHAR(100),                                       -- 1.2.2.4 Comune (max 60 per lo SdI)
+  province CHAR(2) NULL,                                   -- 1.2.2.5 Provincia
+  postal_code VARCHAR(10),                                 -- 1.2.2.3 CAP (5 cifre, validato in app)
+  country CHAR(2) NOT NULL DEFAULT 'IT',                   -- 1.2.2.6 Nazione
+  phone VARCHAR(12) NULL,                                  -- 1.2.5.1 Telefono
+  contact_email VARCHAR(256) NULL,                         -- 1.2.5.3 Email
+  professional_register VARCHAR(60) NULL,                  -- 1.2.1.4 AlboProfessionale
+  register_province CHAR(2) NULL,                          -- 1.2.1.5 ProvinciaAlbo
+  register_number VARCHAR(60) NULL,                        -- 1.2.1.6 NumeroIscrizioneAlbo
+  register_date DATE NULL,                                 -- 1.2.1.7 DataIscrizioneAlbo
+  rea_office CHAR(2) NULL,                                 -- 1.2.4.1 Ufficio
+  rea_number VARCHAR(20) NULL,                             -- 1.2.4.2 NumeroREA
+  share_capital DECIMAL(14,2) NULL,                        -- 1.2.4.3 CapitaleSociale
+  sole_shareholder ENUM('SU','SM') NULL,                   -- 1.2.4.4 SocioUnico
+  liquidation_status ENUM('LS','LN') NULL,                 -- 1.2.4.5 StatoLiquidazione
+  iban VARCHAR(34) NULL,                                   -- 2.4.2.13 IBAN
+  bic VARCHAR(11) NULL,                                    -- 2.4.2.16 BIC
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_users_profiles_vat (vat_country, vat_number),
   CONSTRAINT fk_users_profiles_user
     FOREIGN KEY (user_id)
     REFERENCES users(id)

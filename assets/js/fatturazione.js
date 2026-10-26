@@ -908,10 +908,25 @@ const initializeFatturazione = () => {
         });
     };
 
+    // Il profilo fiscale si compila nella modale del profilo (header): qui si reagisce al salvataggio.
+    bindDocument('profile-saved', 'profile:saved', (event) => {
+        if (!event.detail || !event.detail.fiscalComplete) return;
+        window.__fiscalProfileComplete = true;
+        const profileCompletion = document.getElementById('profile-completion');
+        if (profileCompletion) profileCompletion.hidden = true;
+        // Mostra la scelta cliente solo se non si è già oltre (modulo di fatturazione non ancora aperto).
+        if (billingForm && billingForm.hidden) clientCompletion.hidden = false;
+    });
+    bindDocument('profile-open', 'click', (event) => {
+        if (!event.target.closest('[data-open-profile-modal]')) return;
+        const trigger = document.querySelector('.dashboard-navbar__user-trigger, [data-profile-modal-open]');
+        if (trigger) trigger.click();
+    });
+
     loadClients();
     bindDocument('invoice-new-client', 'invoice:new', () => {
         const profileCompletion = document.getElementById('profile-completion');
-        const needsProfile = Boolean(profileCompletion && profileForm?.dataset.completed !== 'true');
+        const needsProfile = Boolean(profileCompletion && window.__fiscalProfileComplete !== true);
         if (profileCompletion) profileCompletion.hidden = !needsProfile;
         clientCompletion.hidden = needsProfile;
         billingForm.hidden = true;

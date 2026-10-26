@@ -169,6 +169,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         throw new Error(profileData.message || 'Impossibile salvare il profilo');
                     }
 
+                    // Avvisa le altre pagine (es. fatturazione) che i dati fiscali sono cambiati.
+                    document.dispatchEvent(new CustomEvent('profile:saved', {
+                        detail: { fiscalComplete: Boolean(profileData.fiscal_complete) }
+                    }));
+
                     if (!avatarFile) {
                         return null;
                     }
@@ -194,6 +199,42 @@ document.addEventListener('DOMContentLoaded', () => {
                     closeModal();
                 })
                 .catch((error) => alert(error.message || 'Impossibile aggiornare il profilo'));
+        });
+    }
+
+    // --- Dati fiscali: campi che dipendono dal tipo soggetto e input in maiuscolo ---
+    if (profileForm) {
+        const entitySelect = profileForm.elements.tipo_soggetto;
+        const syncEntityFields = () => {
+            if (!entitySelect) return;
+            const isCompany = entitySelect.value === 'company';
+            profileForm.querySelectorAll('[data-entity]').forEach((field) => {
+                const visible = field.dataset.entity === 'company' ? isCompany : !isCompany;
+                field.hidden = !visible;
+                field.style.display = visible ? '' : 'none';
+                // Un campo nascosto con "required" bloccherebbe l'invio del form.
+                field.querySelectorAll('[data-required-when-visible]').forEach((input) => {
+                    input.required = visible;
+                });
+            });
+            const cfLabel = profileForm.querySelector('[data-cf-label]');
+            if (cfLabel) {
+                cfLabel.textContent = isCompany
+                    ? 'Codice fiscale della società (11 cifre o 16 caratteri)'
+                    : 'Codice fiscale';
+            }
+        };
+        if (entitySelect) {
+            entitySelect.addEventListener('change', syncEntityFields);
+            syncEntityFields();
+        }
+
+        profileForm.querySelectorAll('[data-uppercase]').forEach((input) => {
+            input.addEventListener('input', () => {
+                const position = input.selectionStart;
+                input.value = input.value.toUpperCase();
+                if (position !== null) input.setSelectionRange(position, position);
+            });
         });
     }
 
