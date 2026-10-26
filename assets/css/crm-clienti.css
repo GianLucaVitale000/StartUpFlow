@@ -270,15 +270,15 @@ Breadcrumb
 }
 
 .form-control[name="item_unit_price[]"] {
-  width: 130px;
+  width: 80px;
 }
 
 .form-control[name="item_vat_rate[]"] {
-  width: fit-content;
+  width: 100px;
 }
 
 .form-control[name="item_quantity[]"] {
-  width: 70px;
+  width: 80px;
 }
 
 #order-modal .form-control::placeholder {

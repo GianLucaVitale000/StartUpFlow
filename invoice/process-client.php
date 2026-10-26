@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/profile-fiscal.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -98,6 +99,16 @@ foreach ($fields as $field) {
 	$client[$field] = trim((string) ($_POST[$field] ?? ''));
 }
 
+// Convert stringhe vuote in NULL per i campi facoltativi (coerenza con crm-clienti.php)
+// Questo permette a più clienti dello stesso utente di avere vat_number = NULL
+// senza violare l'UNIQUE KEY uk_clients_user_vat (user_id, vat_number)
+$optionalFields = ['vat_number', 'cf', 'pec', 'sdi_code', 'company_name', 'first_name', 'last_name', 'phone', 'email', 'address', 'city', 'state', 'postal_code', 'country', 'source', 'notes'];
+foreach ($optionalFields as $field) {
+    if ($client[$field] === '') {
+        $client[$field] = null;
+    }
+}
+
 $client['client_type'] = in_array($client['client_type'], ['individual', 'company'], true)
 	? $client['client_type']
 	: 'company';
@@ -121,10 +132,17 @@ foreach ($requiredClientFields as $requiredField) {
 	}
 }
 
+// Validate email format if provided
 if ($client['email'] !== '' && !filter_var($client['email'], FILTER_VALIDATE_EMAIL)) {
 	echo json_encode(['success' => false, 'message' => 'Email non valida']);
 	exit;
 }
+
+// Validate VAT number format if provided
+if ($client['vat_number'] !== null && !fiscalIsValidVat($client['vat_number'])) {
+		echo json_encode(['success' => false, 'message' => 'Partita IVA non valida (deve essere 11 cifre con cifra di controllo corretta)']);
+		exit;
+	}		
 
 $params = array_combine(
 	array_map(static fn (string $field): string => ':' . $field, $fields),

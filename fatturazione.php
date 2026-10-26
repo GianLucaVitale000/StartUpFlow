@@ -114,12 +114,12 @@ $username = $_SESSION['username'] ?? 'Utente';
                 <label class="profile-modal__field">
                     <span>Tipo cliente</span>
                     <select name="client_type" id="client-type" required>
-                        <option value="company" selected>Azienda</option>
+                        <option value="company" selected>Società</option>
                         <option value="individual">Persona fisica</option>
                     </select>
                 </label>
                 <label class="profile-modal__field profile-modal__field--full" data-company-field>
-                    <span>Nome Compagnia</span>
+                    <span>Denominazione</span>
                     <input type="text" name="company_name" id="company-name" placeholder="Inserisci la ragione sociale">
                 </label>
                 <label class="profile-modal__field" data-individual-field hidden>
@@ -133,6 +133,10 @@ $username = $_SESSION['username'] ?? 'Utente';
                 <label class="profile-modal__field" data-individual-field hidden>
                     <span>Codice fiscale</span>
                     <input type="text" name="cf" placeholder="Inserisci il codice fiscale" maxlength="16">
+                </label>
+                <label class="profile-modal__field" data-company-field>
+                    <span>P.IVA</span>
+                    <input type="text" name="vat_number" placeholder="Inserisci la Partita IVA (11 cifre)" maxlength="11" inputmode="numeric" pattern="[0-9]{11}">
                 </label>
                 <label class="profile-modal__field profile-modal__field--full">
                     <span>Indirizzo</span>
@@ -209,7 +213,7 @@ $username = $_SESSION['username'] ?? 'Utente';
                         <label for="descrizione-1">Descrizione</label>
                         <input id="descrizione-1" type="text" name="descrizione[]" required>
                         <label for="quantita-1">Quantità</label>
-                        <input id="quantita-1" type="number" name="quantita[]" min="0" step="1" inputmode="numeric" required>
+                        <input id="quantita-1" type="number" name="quantita[]" min="0" step="0.01" inputmode="decimal" required>
                         <label for="prezzo-unitario-1">Prezzo unitario</label>
                         <input id="prezzo-unitario-1" type="number" name="prezzo_unitario[]" min="0" step="0.01" inputmode="decimal" required>
                         <label for="prezzo-totale-1">Prezzo totale</label>

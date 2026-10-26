@@ -95,15 +95,15 @@ $taxableSum = 0.0;
 $expensesSum = 0.0;
 
 foreach ($descriptions as $index => $rawDescription) {
-	$description = trim((string) $rawDescription);
-	$quantity = filter_var((string) $quantities[$index], FILTER_VALIDATE_INT);
+	$quantityRaw = (string) $quantities[$index];
 	$unitPriceRaw = (string) $unitPrices[$index];
 	$rate = filter_var((string) $vatRates[$index], FILTER_VALIDATE_INT);
 	$nature = (string) $natures[$index];
 	$expenseRaw = (string) $expenses[$index];
 	$legalReference = trim((string) $legalReferences[$index]);
 
-	if ($description === '' || strlen($description) > 8000 || strlen($legalReference) > 2000 || $quantity === false || $quantity < 0
+	if ($description === '' || strlen($description) > 8000 || strlen($legalReference) > 2000
+		|| !is_numeric($quantityRaw) || !is_finite((float) $quantityRaw) || (float) $quantityRaw < 0
 		|| !is_numeric($unitPriceRaw) || !is_finite((float) $unitPriceRaw) || (float) $unitPriceRaw < 0
 		|| $rate === false || !in_array($rate, $allowedRates, true)
 		|| !in_array($nature, $allowedNatures, true)
@@ -112,6 +112,7 @@ foreach ($descriptions as $index => $rawDescription) {
 		$respond(422, ['success' => false, 'message' => 'Controlla i dati dei beni, delle aliquote e del riepilogo']);
 	}
 
+	$quantity = round((float) $quantityRaw, 2);
 	$unitPrice = round((float) $unitPriceRaw, 2);
 	$additionalExpenses = round((float) $expenseRaw, 2);
 	$taxableAmount = round($quantity * $unitPrice, 2);
@@ -123,7 +124,7 @@ foreach ($descriptions as $index => $rawDescription) {
 
 	$lineItems[] = [
 		'description' => $description,
-		'quantity' => $quantity,
+		'quantity' => number_format($quantity, 2, '.', ''),
 		'unit_price' => number_format($unitPrice, 2, '.', ''),
 		'vat_rate' => $rate,
 		'nature' => $nature,

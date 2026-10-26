@@ -337,8 +337,8 @@
 	<template id="order-item-template">
 		<div class="order-item">
 			<input type="text" name="item_description[]" class="form-control" placeholder="Descrizione" maxlength="500" required aria-label="Descrizione">
-			<input type="number" name="item_quantity[]" class="form-control" value="1" step="1" min="1" required aria-label="Quantità">
-			<input type="number" name="item_unit_price[]" class="form-control" placeholder= "Prezzo unit."  step="0.01" min="0.00" required aria-label="Prezzo unitario">
+			<input type="number" name="item_quantity[]" class="form-control" placeholder="Q.tà" step="0.01" min="0" required aria-label="Quantità">
+			<input type="number" name="item_unit_price[]" class="form-control" placeholder= "P.U."  step="0.01" min="0.00" required aria-label="Prezzo unitario">
 			<select name="item_vat_rate[]" class="form-control" aria-label="Aliquota IVA">
 				<option value="22" selected>IVA 22%</option>
 				<option value="10">IVA 10%</option>
@@ -347,7 +347,7 @@
 				<option value="0">IVA 0%</option>
 			</select>
 			<output class="order-item__total" aria-label="Totale riga">0,00</output>
-			<button type="button" " data-order-remove-item aria-label="Rimuovi riga">Reset</button>
+			<button type="button" class="btn btn-secondary" data-order-remove-item aria-label="Rimuovi riga">Reset</button>
 		</div>
 		
 </template>
