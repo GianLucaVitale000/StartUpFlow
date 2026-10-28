@@ -102,7 +102,7 @@ foreach ($descriptions as $index => $rawDescription) {
 	$expenseRaw = (string) $expenses[$index];
 	$legalReference = trim((string) $legalReferences[$index]);
 
-	if ($description === '' || strlen($description) > 8000 || strlen($legalReference) > 2000
+	if ($rawDescription === '' || strlen($rawDescription) > 8000 || strlen($legalReference) > 2000
 		|| !is_numeric($quantityRaw) || !is_finite((float) $quantityRaw) || (float) $quantityRaw < 0
 		|| !is_numeric($unitPriceRaw) || !is_finite((float) $unitPriceRaw) || (float) $unitPriceRaw < 0
 		|| $rate === false || !in_array($rate, $allowedRates, true)
@@ -123,7 +123,7 @@ foreach ($descriptions as $index => $rawDescription) {
 	$expensesSum = round($expensesSum + $additionalExpenses, 2);
 
 	$lineItems[] = [
-		'description' => $description,
+		'description' => $rawDescription,
 		'quantity' => number_format($quantity, 2, '.', ''),
 		'unit_price' => number_format($unitPrice, 2, '.', ''),
 		'vat_rate' => $rate,
