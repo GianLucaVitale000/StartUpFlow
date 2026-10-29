@@ -183,12 +183,23 @@ $username = $_SESSION['username'] ?? 'Utente';
             <strong>2) Modulo Fatturazione Pro-Forma</strong>
             <form id="invoice-form" method="post" action="/invoice/process-invoice.php">
                 <?php echo csrfInput(); ?>
+                <?php
+                $taxRegimeCode = strtoupper((string) ($fiscalRow['tax_regime'] ?? ''));
+                $taxRegimeLabel = isset(TAX_REGIMES_SUPPORTED[$taxRegimeCode]) ? TAX_REGIMES_SUPPORTED[$taxRegimeCode] : null;
+                $hasRegime = $taxRegimeCode !== '' && $taxRegimeLabel !== null;
+                ?>
                 <div class="dati-fattura">
-                    <label for="regime-fiscale">Regime Fiscale:</label>
-                    <select id="regime-fiscale" name="regime_fiscale" required>
-                        <option value="regime forfettario">Regime Forfettario</option>
-                        <option value="regime ordinario">Regime Ordinario</option>
-                    </select>
+                    <label>Regime Fiscale (da anagrafica):</label>
+                    <?php if ($hasRegime): ?>
+                        <span id="regime-fiscale-display"><?php echo $escape($taxRegimeLabel); ?></span>
+                        <input type="hidden" id="regime-fiscale" name="tax_regime" value="<?php echo $escape($taxRegimeCode); ?>">
+                    <?php else: ?>
+                        <span id="regime-fiscale-display" style="color: #dc2626; font-weight: bold;">Regime fiscale non specificato in anagrafica</span>
+                        <input type="hidden" id="regime-fiscale" name="tax_regime" value="">
+                        <div style="margin: 0.5rem 0; padding: 0.75rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; color: #991b1b; font-size: 0.9rem;">
+                            <strong>Attenzione:</strong> non hai specificato il regime fiscale in anagrafica. Vai nel profilo utente (anagrafica) per selezionare RF01 (ordinario) o RF19 (forfettario) prima di emettere fatture.
+                        </div>
+                    <?php endif; ?>
                     <label for="data-documento">Data Documento:</label>
                     <input type="date" id="data-documento" name="issue_date" required>
                     <label for="data-scadenza">Data Scadenza:</label>
@@ -198,7 +209,7 @@ $username = $_SESSION['username'] ?? 'Utente';
                         <option value="">Caricamento valute...</option>
                     </select>
                     <label for="num-doc">Numero Documento:</label>
-                    <input id="num-doc" name="document_number" type="text" placeholder="Generazione numero..." readonly disabled required>
+                    <input id="num-doc" name="document_number" type="text" placeholder="Generazione numero..." readonly required>
                 </div>
                 <div class="dati-fattura__bollo" id="bollo-container" hidden>
                     <input type="checkbox" id="bollo-to-client" name="bollo_to_client" value="1">

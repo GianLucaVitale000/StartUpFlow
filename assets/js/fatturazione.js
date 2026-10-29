@@ -45,7 +45,10 @@ const initializeFatturazione = () => {
 
         fetch('/invoice/generate-invoice-number.php', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            credentials: 'same-origin',
             body: new URLSearchParams({ csrf_token: csrfToken })
         })
             .then((response) => {
@@ -356,7 +359,7 @@ const initializeFatturazione = () => {
                 return;
             }
             const hasCassa = cassaSelect.value !== '';
-            const isForfettario = regimeSelect.value === 'regime forfettario';
+            const isForfettario = regimeSelect.value === 'RF19' || regimeSelect.value === 'regime forfettario';
             cassaDetails.hidden = !hasCassa;
             cassaRate.required = hasCassa;
             cassaTaxable.required = hasCassa;
@@ -441,7 +444,7 @@ const initializeFatturazione = () => {
                     cassaTaxable.dataset.manual = 'false';
                 } else if (event.target === cassaTaxable && cassaTaxable.value === '') {
                     cassaTaxable.dataset.manual = 'false'; // campo svuotato: torna al calcolo automatico
-                } else if (event.target === cassaVat && regimeSelect.value !== 'regime forfettario') {
+                } else if (event.target === cassaVat && regimeSelect.value !== 'RF19' && regimeSelect.value !== 'regime forfettario') {
                     cassaVat.dataset.preferred = cassaVat.value;
                 }
                 refreshCassa();
@@ -457,7 +460,7 @@ const initializeFatturazione = () => {
 
         const updateBolloVisibility = () => {
             if (!bolloContainer || !bolloCheckbox) return;
-            const isForfettario = regimeSelect.value === 'regime forfettario';
+            const isForfettario = regimeSelect.value === 'RF19' || regimeSelect.value === 'regime forfettario';
             // Il contributo cassa concorre al totale non soggetto a IVA su cui si valuta il bollo.
             const totalTaxable = getTaxableTotal() + cassaContribution;
             const showBollo = isForfettario && roundMoney(totalTaxable) > 77.47;
@@ -494,7 +497,7 @@ const initializeFatturazione = () => {
                 const previous = previousValues.get(summaryId);
                 const natureSelect = row.querySelector('[data-summary-nature]');
                 const natureValue = row.querySelector('[data-summary-nature-value]');
-                const isForfettario = regimeSelect.value === 'regime forfettario';
+                const isForfettario = regimeSelect.value === 'RF19' || regimeSelect.value === 'regime forfettario';
                 const itemTitle = description || `Beni e Servizi ${index + 1}`;
                 row.dataset.vatSummaryId = summaryId;
                 row.querySelector('[data-vat-summary-title]').textContent = `Riepilogo importi per aliquota - ${itemTitle}`;
@@ -535,7 +538,7 @@ const initializeFatturazione = () => {
         };
 
         const updateIva = () => {
-            const isForfettario = regimeSelect.value === 'regime forfettario';
+            const isForfettario = regimeSelect.value === 'RF19' || regimeSelect.value === 'regime forfettario';
             beniForm.querySelectorAll('select[name="aliquota_iva[]"]').forEach((ivaSelect) => {
                 const row = ivaSelect.closest('[data-beni-row]');
                 ivaSelect.querySelectorAll('option').forEach((option) => {
@@ -568,7 +571,7 @@ const initializeFatturazione = () => {
             if (event.target.matches('select[name="aliquota_iva[]"]')) {
                 const row = event.target.closest('[data-beni-row]');
                 // Ricorda le scelte manuali solo in ordinario: in forfettario il valore è forzato a 0.
-                if (regimeSelect.value !== 'regime forfettario') {
+                if (regimeSelect.value !== 'RF19' && regimeSelect.value !== 'regime forfettario') {
                     row.dataset.preferredRate = event.target.value;
                 }
                 const hiddenIvaInput = row.querySelector('[data-aliquota-iva-value]');

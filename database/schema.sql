@@ -212,6 +212,14 @@ CREATE TABLE IF NOT EXISTS documents (
     ON UPDATE CASCADE
 );
 
+-- Tabella di supporto per i contatori progressivi delle fatture (per anno e serie)
+CREATE TABLE IF NOT EXISTS invoice_counters (
+    series VARCHAR(10) NOT NULL,
+    year INT NOT NULL,
+    last_number INT NOT NULL,
+    PRIMARY KEY (series, year)
+) ENGINE=InnoDB;
+
 
 CREATE TABLE IF NOT EXISTS invoices (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

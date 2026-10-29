@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice documentNumber="FT-2026-0028">
+  <Causale></Causale>
+  <Items>
+    <Item>
+      <Description>mouse</Description>
+      <Quantity>1.00</Quantity>
+      <UnitPrice>50.00</UnitPrice>
+      <VatRate>0</VatRate>
+      <Nature>non_soggetta</Nature>
+      <TaxableAmount>50.00</TaxableAmount>
+      <TaxAmount>0.00</TaxAmount>
+      <AdditionalExpenses>0.00</AdditionalExpenses>
+      <LegalReference></LegalReference>
+      <LineTotal>50.00</LineTotal>
+    </Item>
+    <Item>
+      <Description>keyboard</Description>
+      <Quantity>1.00</Quantity>
+      <UnitPrice>16.00</UnitPrice>
+      <VatRate>0</VatRate>
+      <Nature>non_soggetta</Nature>
+      <TaxableAmount>16.00</TaxableAmount>
+      <TaxAmount>0.00</TaxAmount>
+      <AdditionalExpenses>0.00</AdditionalExpenses>
+      <LegalReference></LegalReference>
+      <LineTotal>16.00</LineTotal>
+    </Item>
+  </Items>
+</Invoice>
