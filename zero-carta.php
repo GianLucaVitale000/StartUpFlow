@@ -41,7 +41,6 @@ $storageRoot = realpath(__DIR__ . '/storage/contracts');
 ?>
 <div class="service-page zero-carta">
     <header class="service-header">
-        <a href="/" data-spa="true" class="back-link">← Torna alla Dashboard</a>
         <h1>Zero carta</h1>
         <p>Benvenuto, <?php echo htmlspecialchars((string) $username, ENT_QUOTES, 'UTF-8'); ?>!</p>
     </header>
