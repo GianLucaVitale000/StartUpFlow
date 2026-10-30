@@ -38,7 +38,7 @@ $username = $_SESSION['username'] ?? 'Utente';
 <div class="service-page fatturazione">
     <header class="service-header">
         <h1>Fatturazione</h1>
-        <p>Crea e visualizza le tue fatture pro-forma</p>
+        <p>Crea e visualizza le tue fatture</p>
     </header>
 
     <div class="service-content">
@@ -180,7 +180,7 @@ $username = $_SESSION['username'] ?? 'Utente';
         </section>
 
         <div class="form-fatturazione" id="billing-form" hidden>
-            <strong>2) Modulo Fatturazione Pro-Forma</strong>
+            <strong>2) Modulo Fatturazione</strong>
             <form id="invoice-form" method="post" action="/invoice/process-invoice.php">
                 <?php echo csrfInput(); ?>
                 <?php

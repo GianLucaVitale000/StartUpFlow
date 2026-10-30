@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+
+use FatturaElettronicaPhp\FatturaElettronica\DigitalDocument;
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -38,7 +41,6 @@ try {
 	$statement->execute([':user_id' => $userId]);
 	$invoices = [];
 
-	// Nomi leggibili delle casse previdenziali (se il catalogo non è leggibile si mostra solo il codice)
 	$cassaNames = [];
 	$cassaJson = @file_get_contents(dirname(__DIR__) . '/assets/data/casse-previdenziali.json');
 	$cassaCatalog = $cassaJson === false ? null : json_decode($cassaJson, true);
@@ -49,29 +51,8 @@ try {
 			}
 		}
 	}
-	$cassaFields = [
-		'TipoCassa' => 'type',
-		'AlCassa' => 'rate',
-		'ImportoContributoCassa' => 'amount',
-		'ImponibileCassa' => 'taxable_amount',
-		'AliquotaIVA' => 'vat_rate',
-		'Ritenuta' => 'withholding',
-		'Natura' => 'nature',
-		'RiferimentoAmministrazione' => 'reference',
-	];
+
 	$storageDirectory = dirname(__DIR__) . '/storage/invoices';
-	$itemFields = [
-		'Description' => 'description',
-		'Quantity' => 'quantity',
-		'UnitPrice' => 'unit_price',
-		'VatRate' => 'vat_rate',
-		'Nature' => 'nature',
-		'TaxableAmount' => 'taxable_amount',
-		'TaxAmount' => 'tax_amount',
-		'AdditionalExpenses' => 'additional_expenses',
-		'LegalReference' => 'legal_reference',
-		'LineTotal' => 'line_total',
-	];
 
 	foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $invoice) {
 		$clientName = $invoice['client_type'] === 'company'
@@ -90,37 +71,100 @@ try {
 			$xmlPath = $storageDirectory . '/' . $documentNumber . '.xml';
 			$fileSize = is_file($xmlPath) ? filesize($xmlPath) : false;
 			if ($fileSize !== false && $fileSize <= 2_000_000) {
-				$xml = new DOMDocument();
-				if (@$xml->load($xmlPath, LIBXML_NONET | LIBXML_NOBLANKS)) {
+				try {
+					$eDoc = DigitalDocument::parseFrom($xmlPath);
 					$invoice['xml_available'] = true;
-					$causaleNode = $xml->getElementsByTagName('Causale')->item(0);
-					if ($causaleNode instanceof DOMElement) {
-						$invoice['causale'] = $causaleNode->textContent;
-					}
-					$cassaNode = $xml->getElementsByTagName('Cassa')->item(0);
-					if ($cassaNode instanceof DOMElement) {
-						$cassa = [];
-						foreach ($cassaNode->childNodes as $fieldNode) {
-							if ($fieldNode instanceof DOMElement && isset($cassaFields[$fieldNode->tagName])) {
-								$cassa[$cassaFields[$fieldNode->tagName]] = $fieldNode->textContent;
+					$instances = $eDoc->getDocumentInstances();
+					if (!empty($instances)) {
+						$instance = $instances[0];
+						$descriptions = $instance->getDescriptions();
+						$invoice['causale'] = implode("\n", $descriptions);
+
+						$funds = $instance->getFunds();
+						if (!empty($funds)) {
+							$fund = $funds[0];
+							$cassaType = (string) $fund->getType();
+							$cassa = [
+								'type' => $cassaType,
+								'rate' => number_format((float) $fund->getPercentage(), 2, '.', ''),
+								'amount' => number_format((float) $fund->getAmount(), 2, '.', ''),
+								'taxable_amount' => number_format((float) ($fund->getSubtotal() ?? 0), 2, '.', ''),
+								'vat_rate' => number_format((float) ($fund->getTaxPercentage() ?? 0), 2, '.', ''),
+							];
+							if ($cassaType !== '') {
+								$cassa['type_label'] = $cassaNames[$cassaType] ?? $cassaType;
+							}
+							if (isset($cassa['amount'], $cassa['vat_rate'])) {
+								$cassa['tax_amount'] = number_format(round((float) $cassa['amount'] * (float) $cassa['vat_rate'] / 100, 2), 2, '.', '');
+							}
+							$invoice['cassa'] = $cassa;
+						}
+
+						if ($eDoc->isSimplified()) {
+							foreach ($instance->getSimplifiedLines() as $line) {
+								$invoice['items'][] = [
+									'description' => $line->getDescription(),
+									'quantity' => '1',
+									'unit_price' => number_format((float)$line->getTotal(), 2, '.', ''),
+									'vat_rate' => $line->getTaxPercentage() ?? 0,
+									'nature' => $line->getVatNature() ? (string)$line->getVatNature() : '',
+									'taxable_amount' => number_format((float)$line->getTotal(), 2, '.', ''),
+									'tax_amount' => number_format((float)($line->getTaxAmount() ?? 0), 2, '.', ''),
+									'additional_expenses' => '0.00',
+									'legal_reference' => $line->getReference() ?? '',
+									'line_total' => number_format((float)$line->getTotal(), 2, '.', ''),
+								];
+							}
+						} else {
+							foreach ($instance->getLines() as $line) {
+								$invoice['items'][] = [
+									'description' => $line->getDescription(),
+									'quantity' => number_format((float)$line->getQuantity(), 2, '.', ''),
+									'unit_price' => number_format((float)$line->getUnitPrice(), 2, '.', ''),
+									'vat_rate' => $line->getTaxPercentage() ?? 0,
+									'nature' => $line->getVatNature() ? (string)$line->getVatNature() : '',
+									'taxable_amount' => number_format((float)$line->getTotal(), 2, '.', ''),
+									'tax_amount' => number_format(round((float)$line->getTotal() * (float)($line->getTaxPercentage() ?? 0) / 100, 2), 2, '.', ''),
+									'additional_expenses' => '0.00',
+									'legal_reference' => $line->getReference() ?? '',
+									'line_total' => number_format(round((float)$line->getTotal() * (1 + (float)($line->getTaxPercentage() ?? 0) / 100), 2), 2, '.', ''),
+								];
 							}
 						}
-						if (isset($cassa['type'])) {
-							$cassa['type_label'] = $cassaNames[$cassa['type']] ?? $cassa['type'];
-						}
-						if (isset($cassa['amount'], $cassa['vat_rate'])) {
-							$cassa['tax_amount'] = number_format(round((float) $cassa['amount'] * (float) $cassa['vat_rate'] / 100, 2), 2, '.', '');
-						}
-						$invoice['cassa'] = $cassa;
 					}
-					foreach ($xml->getElementsByTagName('Item') as $itemNode) {
-						$item = [];
-						foreach ($itemNode->childNodes as $fieldNode) {
-							if ($fieldNode instanceof DOMElement && isset($itemFields[$fieldNode->tagName])) {
-								$item[$itemFields[$fieldNode->tagName]] = $fieldNode->textContent;
-							}
+				} catch (Throwable $e) {
+					// Fallback to DOMDocument parsing for legacy XML files
+				}
+
+				if (empty($invoice['items'])) {
+					$xml = new DOMDocument();
+					if (@$xml->load($xmlPath, LIBXML_NONET | LIBXML_NOBLANKS)) {
+						$invoice['xml_available'] = true;
+						$causaleNode = $xml->getElementsByTagName('Causale')->item(0);
+						if ($causaleNode instanceof DOMElement) {
+							$invoice['causale'] = $causaleNode->textContent;
 						}
-						$invoice['items'][] = $item;
+						$itemFields = [
+							'Description' => 'description',
+							'Quantity' => 'quantity',
+							'UnitPrice' => 'unit_price',
+							'VatRate' => 'vat_rate',
+							'Nature' => 'nature',
+							'TaxableAmount' => 'taxable_amount',
+							'TaxAmount' => 'tax_amount',
+							'AdditionalExpenses' => 'additional_expenses',
+							'LegalReference' => 'legal_reference',
+							'LineTotal' => 'line_total',
+						];
+						foreach ($xml->getElementsByTagName('Item') as $itemNode) {
+							$item = [];
+							foreach ($itemNode->childNodes as $fieldNode) {
+								if ($fieldNode instanceof DOMElement && isset($itemFields[$fieldNode->tagName])) {
+									$item[$itemFields[$fieldNode->tagName]] = $fieldNode->textContent;
+								}
+							}
+							$invoice['items'][] = $item;
+						}
 					}
 				}
 			}
