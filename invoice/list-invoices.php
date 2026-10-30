@@ -86,7 +86,7 @@ try {
 		$invoice['cassa'] = null;
 		$documentNumber = (string) $invoice['document_number'];
 
-		if (preg_match('/^SF-[A-F0-9]{16}$/', $documentNumber)) {
+		if (preg_match('/^[A-Z]+-\d{4}-\d+$/', $documentNumber)) {
 			$xmlPath = $storageDirectory . '/' . $documentNumber . '.xml';
 			$fileSize = is_file($xmlPath) ? filesize($xmlPath) : false;
 			if ($fileSize !== false && $fileSize <= 2_000_000) {

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Invoice documentNumber="FT-2026-0038">
+  <Causale></Causale>
+  <Items>
+    <Item>
+      <Description>sito</Description>
+      <Quantity>1.00</Quantity>
+      <UnitPrice>1000.00</UnitPrice>
+      <VatRate>0</VatRate>
+      <Nature>non_soggetta</Nature>
+      <TaxableAmount>1000.00</TaxableAmount>
+      <TaxAmount>0.00</TaxAmount>
+      <AdditionalExpenses>0.00</AdditionalExpenses>
+      <LegalReference></LegalReference>
+      <LineTotal>1000.00</LineTotal>
+    </Item>
+  </Items>
+</Invoice>

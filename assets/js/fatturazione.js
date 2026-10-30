@@ -209,6 +209,25 @@ const initializeFatturazione = () => {
                     content.append(cassaHeading, cassaList);
                 }
 
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'invoice-download-actions';
+                actionsDiv.style.cssText = 'margin-top: 1.5rem; display: flex; gap: 1rem;';
+
+                const pdfButton = document.createElement('a');
+                pdfButton.className = 'button secondary';
+                pdfButton.textContent = 'Scarica PDF';
+                pdfButton.href = `/invoice/download-invoice.php?id=${invoice.id}&format=pdf`;
+                pdfButton.target = '_blank';
+
+                const xmlButton = document.createElement('a');
+                xmlButton.className = 'button secondary';
+                xmlButton.textContent = 'Scarica XML';
+                xmlButton.href = `/invoice/download-invoice.php?id=${invoice.id}&format=xml`;
+                xmlButton.target = '_blank';
+
+                actionsDiv.append(pdfButton, xmlButton);
+                content.append(actionsDiv);
+
                 entry.append(content);
                 invoiceList.append(entry);
             });

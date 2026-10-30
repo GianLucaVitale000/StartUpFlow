@@ -67,6 +67,17 @@ if ($taxRegime === null && isset($_POST['regime_fiscale'])) {
 $bolloToClient = (int) ($_POST['bollo_to_client'] ?? 0);
 $bolloAmount = 0.0;
 
+// Lettura campi cassa previdenziale
+$cassaTipo = strtoupper(trim((string) ($_POST['cassa_tipo'] ?? '')));
+$cassaAliquota = (float) ($_POST['cassa_aliquota'] ?? 0);
+$cassaImponibile = (float) ($_POST['cassa_imponibile'] ?? 0);
+$cassaAliquotaIva = (int) ($_POST['cassa_aliquota_iva'] ?? 0);
+$cassaNatura = trim((string) ($_POST['cassa_natura'] ?? ''));
+$cassaImporto = (float) ($_POST['cassa_importo'] ?? 0);
+$cassaImposta = (float) ($_POST['cassa_imposta'] ?? 0);
+$cassaRiferimento = trim((string) ($_POST['cassa_riferimento'] ?? ''));
+$cassaRitenuta = (int) ($_POST['cassa_ritenuta'] ?? 0);
+
 function isValidDate(string $date): bool {
     $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
     $errors = DateTimeImmutable::getLastErrors();
@@ -161,6 +172,31 @@ try {
         ];
     }
 
+    // Calcolo cassa previdenziale
+    $cassaCalculatedAmount = 0.0;
+    $cassaCalculatedTax = 0.0;
+    if ($cassaTipo !== '' && $cassaImponibile > 0 && $cassaAliquota > 0) {
+        $cassaCalculatedAmount = round($cassaImponibile * $cassaAliquota / 100, 2);
+        if ($cassaAliquotaIva > 0 && $cassaCalculatedAmount > 0) {
+            $cassaCalculatedTax = round($cassaCalculatedAmount * $cassaAliquotaIva / 100, 2);
+        }
+        // Usa i valori calcolati se non forniti esplicitamente
+        if ($cassaImporto <= 0) {
+            $cassaImporto = $cassaCalculatedAmount;
+        }
+        if ($cassaImposta <= 0) {
+            $cassaImposta = $cassaCalculatedTax;
+        }
+    }
+
+    // Calcolo bollo (€2,00 per regime forfettario con imponibile + cassa > €77,47)
+    if ($bolloToClient && $taxRegime === 'forfettario' && ($taxableSum + $cassaImporto) > 77.47) {
+        $bolloAmount = 2.00;
+    }
+
+    // Aggiorna il totale fattura includendo cassa e bollo
+    $invoiceTotal = round($invoiceTotal + $cassaImporto + $cassaImposta + $bolloAmount, 2);
+
     $clientCheck = $pdo->prepare('SELECT id FROM clients WHERE id = :client_id AND user_id = :user_id LIMIT 1');
     $clientCheck->execute([':client_id' => $clientId, ':user_id' => $userId]);
     if (!$clientCheck->fetchColumn()) {
@@ -173,7 +209,7 @@ try {
     }
 
     $checkNumber = $pdo->prepare('SELECT 1 FROM invoices WHERE document_number = :document_number LIMIT 1');
-    $insertInvoice = $pdo->prepare('INSERT INTO invoices (client_id, user_id, document_number, issue_date, due_date, currency, tax_regime, total, bollo, bollo_to_client) VALUES (:client_id, :user_id, :document_number, :issue_date, :due_date, :currency, :tax_regime, :total, :bollo, :bollo_to_client)');
+    $insertInvoice = $pdo->prepare('INSERT INTO invoices (client_id, user_id, document_number, issue_date, due_date, currency, tax_regime, total, bollo, bollo_to_client, cassa_type, cassa_amount) VALUES (:client_id, :user_id, :document_number, :issue_date, :due_date, :currency, :tax_regime, :total, :bollo, :bollo_to_client, :cassa_type, :cassa_amount)');
 
     $xmlPath = $storageDirectory . '/' . $documentNumber . '.xml';
     
@@ -186,6 +222,32 @@ try {
     $causaleElement = $xml->createElement('Causale');
     $causaleElement->appendChild($xml->createTextNode($causale));
     $root->appendChild($causaleElement);
+
+    if ($cassaTipo !== '') {
+        $cassaElement = $xml->createElement('Cassa');
+        $root->appendChild($cassaElement);
+
+        $cassaData = [
+            'TipoCassa' => $cassaTipo,
+            'AlCassa' => number_format($cassaAliquota, 2, '.', ''),
+            'ImportoContributoCassa' => number_format($cassaImporto, 2, '.', ''),
+            'ImponibileCassa' => number_format($cassaImponibile, 2, '.', ''),
+            'AliquotaIVA' => (string) $cassaAliquotaIva,
+            'Ritenuta' => $cassaRitenuta ? 'SI' : 'NO',
+        ];
+        if ($cassaNatura !== '') {
+            $cassaData['Natura'] = $cassaNatura;
+        }
+        if ($cassaRiferimento !== '') {
+            $cassaData['RiferimentoAmministrazione'] = $cassaRiferimento;
+        }
+
+        foreach ($cassaData as $tagName => $value) {
+            $el = $xml->createElement($tagName);
+            $el->appendChild($xml->createTextNode($value));
+            $cassaElement->appendChild($el);
+        }
+    }
 
     $items = $xml->createElement('Items');
     $root->appendChild($items);
@@ -229,6 +291,8 @@ try {
         ':total' => number_format($invoiceTotal, 2, '.', ''),
         ':bollo' => number_format($bolloAmount, 2, '.', ''),
         ':bollo_to_client' => $bolloToClient ? 1 : 0,
+        ':cassa_type' => $cassaTipo !== '' ? $cassaTipo : null,
+        ':cassa_amount' => $cassaTipo !== '' ? number_format($cassaImporto, 2, '.', '') : 0.00,
     ]);
     $invoiceId = (int) $pdo->lastInsertId();
     $pdo->commit();
