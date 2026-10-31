@@ -116,7 +116,13 @@ try {
 								];
 							}
 						} else {
-							foreach ($instance->getLines() as $line) {
+							$summaryReferences = [];
+								foreach ($instance->getTotals() as $summaryTotal) {
+									if ($summaryTotal->getVatNature() !== null && $summaryTotal->getReference() !== null) {
+										$summaryReferences[(string) $summaryTotal->getVatNature()] = (string) $summaryTotal->getReference();
+									}
+								}
+								foreach ($instance->getLines() as $line) {
 								$invoice['items'][] = [
 									'description' => $line->getDescription(),
 									'quantity' => number_format((float)$line->getQuantity(), 2, '.', ''),
@@ -126,7 +132,7 @@ try {
 									'taxable_amount' => number_format((float)$line->getTotal(), 2, '.', ''),
 									'tax_amount' => number_format(round((float)$line->getTotal() * (float)($line->getTaxPercentage() ?? 0) / 100, 2), 2, '.', ''),
 									'additional_expenses' => '0.00',
-									'legal_reference' => $line->getReference() ?? '',
+									'legal_reference' => $summaryReferences[(string) $line->getVatNature()] ?? '',
 									'line_total' => number_format(round((float)$line->getTotal() * (1 + (float)($line->getTaxPercentage() ?? 0) / 100), 2), 2, '.', ''),
 								];
 							}

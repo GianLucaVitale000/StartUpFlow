@@ -1,0 +1,7 @@
+[
+    { "value": "MP01", "name": "Contanti" },
+    { "value": "MP02", "name": "Assegno" },
+    { "value": "MP05", "name": "Bonifico" },
+    { "value": "MP08", "name": "Carta di pagamento" },
+    { "value": "MP09", "name": "RID / SDD" }
+]

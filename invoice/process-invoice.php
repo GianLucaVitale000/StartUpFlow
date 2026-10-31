@@ -45,7 +45,6 @@ use FatturaElettronicaPhp\FatturaElettronica\Enums\PaymentTerm;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\TaxRegime;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\TransmissionFormat;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\VatEligibility;
-use FatturaElettronicaPhp\FatturaElettronica\Enums\VatNature;
 use FatturaElettronicaPhp\FatturaElettronica\Line;
 use FatturaElettronicaPhp\FatturaElettronica\SimplifiedLine;
 use FatturaElettronicaPhp\FatturaElettronica\Fund;
@@ -53,6 +52,28 @@ use FatturaElettronicaPhp\FatturaElettronica\PaymentDetails;
 use FatturaElettronicaPhp\FatturaElettronica\PaymentInfo;
 use FatturaElettronicaPhp\FatturaElettronica\Supplier;
 use FatturaElettronicaPhp\FatturaElettronica\Total;
+
+// Regime forfettario: l'unica Natura ammessa è N2.2 (non soggette – altri casi).
+const FORFETTARIO_NATURE = 'N2.2';
+const FORFETTARIO_REFERENCE = "Operazione senza applicazione dell'IVA ai sensi dell'art. 1, commi 54-89, L. 190/2014";
+
+/**
+ * Catalogo Natura IVA (assets/data/natura.json) indicizzato per codice.
+ */
+function loadNatureCatalog(): array {
+    $jsonPath = dirname(__DIR__) . '/assets/data/natura.json';
+    $data = is_file($jsonPath) ? json_decode((string) file_get_contents($jsonPath), true) : null;
+    if (!is_array($data)) {
+        throw new RuntimeException('Catalogo Natura IVA non disponibile');
+    }
+    $catalog = [];
+    foreach ($data as $entry) {
+        if (isset($entry['value'])) {
+            $catalog[(string) $entry['value']] = $entry;
+        }
+    }
+    return $catalog;
+}
 
 // Caricamento profilo utente (Cedente)
 $stmt = $pdo->prepare('SELECT * FROM users_profiles WHERE user_id = :user_id LIMIT 1');
@@ -190,9 +211,9 @@ if ($lineCount === 0) {
 }
 
 try {
-    $allowedRates = $taxRegime === 'forfettario' ? [0] : [4, 5, 10, 22];
-    $allowedNatures = ['non_soggetta', 'esente', 'fuori_campo', 'N1', 'N2.1', 'N2.2', 'N3.1', 'N3.2', 'N3.3', 'N3.4', 'N3.5', 'N3.6', 'N4', 'N5', 'N6.1', 'N6.2', 'N6.3', 'N6.4', 'N6.5', 'N6.6', 'N6.7', 'N6.8', 'N6.9'];
-    
+    $natureCatalog = loadNatureCatalog();
+    $allowedRates = $taxRegime === 'forfettario' ? [0] : [0, 4, 5, 10, 22];
+
     $lineItems = [];
     $invoiceTotal = 0.0;
     $taxableSum = 0.0;
@@ -207,11 +228,34 @@ try {
         $expenseRaw = (string) $expenses[$index];
         $legalReference = trim((string) $legalReferences[$index]);
 
-        if ($rawDescription === '' || strlen($rawDescription) > 8000 || strlen($legalReference) > 2000
+        if ($rawDescription === '' || strlen($rawDescription) > 8000
             || !is_numeric($quantityRaw) || !is_finite((float) $quantityRaw) || (float) $quantityRaw < 0
             || !is_numeric($unitPriceRaw) || !is_finite((float) $unitPriceRaw) || (float) $unitPriceRaw < 0
             || $rate === false || !is_numeric($expenseRaw) || !is_finite((float) $expenseRaw) || (float) $expenseRaw < 0) {
             respond(422, ['success' => false, 'message' => 'Controlla i dati dei beni, delle aliquote e del riepilogo']);
+        }
+
+        if (mb_strlen($legalReference) > 100) {
+            respond(422, ['success' => false, 'message' => 'Il riferimento normativo non può superare i 100 caratteri']);
+        }
+        if (!in_array($rate, $allowedRates, true)) {
+            respond(422, ['success' => false, 'message' => $taxRegime === 'forfettario'
+                ? 'Nel regime forfettario l\'aliquota IVA deve essere 0%'
+                : 'Aliquota IVA non valida']);
+        }
+
+        // Natura: obbligatoria con aliquota 0, da omettere con aliquota > 0 (altrimenti lo SdI scarta il file).
+        if ($rate > 0) {
+            $nature = null;
+        } elseif ($taxRegime === 'forfettario') {
+            $nature = FORFETTARIO_NATURE;
+            if ($legalReference === '') {
+                $legalReference = FORFETTARIO_REFERENCE;
+            }
+        } elseif (isset($natureCatalog[$nature])) {
+            // codice valido scelto dall'utente
+        } else {
+            respond(422, ['success' => false, 'message' => 'Seleziona una Natura IVA valida per le righe con aliquota 0%']);
         }
 
         $quantity = round((float) $quantityRaw, 2);
@@ -229,13 +273,28 @@ try {
             'quantity' => $quantity,
             'unit_price' => $unitPrice,
             'vat_rate' => $rate,
-            'nature' => $nature !== '' ? $nature : 'N2.2',
+            'nature' => $nature,
             'taxable_amount' => $taxableAmount,
             'tax_amount' => $taxAmount,
             'additional_expenses' => $additionalExpenses,
             'legal_reference' => $legalReference,
             'line_total' => $lineTotal,
         ];
+    }
+
+    // Cassa: in forfettario niente IVA né ritenuta; con aliquota 0 serve la Natura (i campi disabilitati non arrivano nel POST).
+    if ($cassaTipo !== '') {
+        if ($taxRegime === 'forfettario') {
+            $cassaAliquotaIva = 0;
+            $cassaRitenuta = 0;
+        }
+        if ($cassaAliquotaIva > 0) {
+            $cassaNatura = '';
+        } elseif ($taxRegime === 'forfettario') {
+            $cassaNatura = FORFETTARIO_NATURE;
+        } elseif (!isset($natureCatalog[$cassaNatura])) {
+            respond(422, ['success' => false, 'message' => 'Seleziona una Natura IVA valida per il contributo cassa con aliquota 0%']);
+        }
     }
 
     // Calcolo cassa previdenziale
@@ -268,6 +327,27 @@ try {
     if ($isSimplified && $invoiceTotal > 400.00) {
         respond(422, ['success' => false, 'message' => 'Le fatture semplificate non possono superare l\'importo totale di 400,00 € (Art. 21-bis DPR 633/72)']);
     }
+
+    // --- Riepilogo IVA (DatiRiepilogo): una riga per coppia aliquota + natura, righe e cassa incluse ---
+    $vatSummary = [];
+    $addToVatSummary = function (int $rate, ?string $nature, float $taxable, float $expenses, string $reference) use (&$vatSummary): void {
+        $key = $rate . '|' . ($nature ?? '');
+        if (!isset($vatSummary[$key])) {
+            $vatSummary[$key] = ['rate' => $rate, 'nature' => $nature, 'taxable' => 0.0, 'expenses' => 0.0, 'reference' => ''];
+        }
+        $vatSummary[$key]['taxable'] = round($vatSummary[$key]['taxable'] + $taxable, 2);
+        $vatSummary[$key]['expenses'] = round($vatSummary[$key]['expenses'] + $expenses, 2);
+        if ($vatSummary[$key]['reference'] === '' && $reference !== '') {
+            $vatSummary[$key]['reference'] = $reference;
+        }
+    };
+    foreach ($lineItems as $li) {
+        $addToVatSummary((int) $li['vat_rate'], $li['nature'], (float) $li['taxable_amount'], (float) $li['additional_expenses'], (string) $li['legal_reference']);
+    }
+    if ($cassaTipo !== '' && $cassaImporto > 0) {
+        $addToVatSummary($cassaAliquotaIva, $cassaNatura !== '' ? $cassaNatura : null, $cassaImporto, 0.0, '');
+    }
+    ksort($vatSummary);
 
     // --- Costruzione Supplier (Cedente) ---
     $supplier = (new Supplier())
@@ -386,13 +466,8 @@ try {
                 ->setTaxPercentage((float) $li['vat_rate'])
                 ->setTaxAmount($li['tax_amount']);
             
-            $natCode = $li['nature'];
-            if ($natCode !== '' && class_exists(VatNature::class)) {
-                try {
-                    $sLine->setVatNature(new VatNature($natCode));
-                } catch (Throwable $e) {
-                    $sLine->setVatNature(VatNature::N2_2());
-                }
+            if ($li['nature'] !== null) {
+                $sLine->setVatNature($li['nature']);
             }
             if ($li['legal_reference'] !== '') {
                 $sLine->setReference($li['legal_reference']);
@@ -410,30 +485,35 @@ try {
                 ->setTotal($li['taxable_amount'])
                 ->setTaxPercentage($li['vat_rate']);
 
-            $natCode = $li['nature'];
-            if ($natCode !== '') {
-                try {
-                    $regLine->setVatNature(new VatNature($natCode));
-                } catch (Throwable $e) {
-                    $regLine->setVatNature(VatNature::N2_2());
-                }
-            }
-            if ($li['legal_reference'] !== '') {
-                $regLine->setReference($li['legal_reference']);
+            if ($li['nature'] !== null) {
+                $regLine->setVatNature($li['nature']);
             }
             $documentInstance->addLine($regLine);
         }
 
-        // Totali riepilogo IVA ordinario
-        $documentInstance->addTotal(
-            (new Total())
-                ->setTaxPercentage(0)
-                ->setVatNature(VatNature::N2_2())
-                ->setTotal($taxableSum)
-                ->setTaxAmount(0.00)
-                ->setTaxType(VatEligibility::I())
-                ->setReference("Operazione senza applicazione dell'IVA ai sensi dell'art. 1, commi 54-89, L. 190/2014")
-        );
+        // Totali riepilogo IVA (DatiRiepilogo)
+        foreach ($vatSummary as $group) {
+            $groupTaxable = round($group['taxable'] + $group['expenses'], 2);
+            $total = (new Total())
+                ->setTaxPercentage((float) $group['rate'])
+                ->setTotal($groupTaxable)
+                ->setTaxAmount(round($groupTaxable * $group['rate'] / 100, 2))
+                ->setTaxType(VatEligibility::I());
+            if ($group['expenses'] > 0) {
+                $total->setOtherExpenses($group['expenses']);
+            }
+            if ($group['nature'] !== null) {
+                $total->setVatNature($group['nature']);
+            }
+            $reference = $group['reference'];
+            if ($reference === '' && $taxRegime === 'forfettario') {
+                $reference = FORFETTARIO_REFERENCE;
+            }
+            if ($reference !== '') {
+                $total->setReference($reference);
+            }
+            $documentInstance->addTotal($total);
+        }
     }
 
     // Informazioni di pagamento

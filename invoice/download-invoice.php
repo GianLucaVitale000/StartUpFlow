@@ -63,6 +63,7 @@ try {
         $causale = '';
         $cassaAmount = 0.0;
         $virtualDuty = '';
+        $vatNotes = [];
         if (is_file($xmlPath)) {
             try {
                 $eDoc = DigitalDocument::parseFrom($xmlPath);
@@ -73,6 +74,15 @@ try {
                     $causale = implode("\n", $descriptions);
 
                     $virtualDuty = $instance->getVirtualDuty();
+
+                    foreach ($instance->getTotals() as $summaryTotal) {
+                        if ($summaryTotal->getVatNature() !== null) {
+                            $vatNotes[] = [
+                                'nature' => (string) $summaryTotal->getVatNature(),
+                                'reference' => (string) ($summaryTotal->getReference() ?? ''),
+                            ];
+                        }
+                    }
 
                     $funds = $instance->getFunds();
                     if (!empty($funds)) {
@@ -209,6 +219,14 @@ try {
                 <div style="margin-bottom: 2rem;">
                     <h3>Causale</h3>
                     <p><?php echo nl2br(htmlspecialchars($causale, ENT_QUOTES, 'UTF-8')); ?></p>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!empty($vatNotes)): ?>
+                <div style="margin-bottom: 2rem; font-size: 0.9rem;">
+                    <?php foreach ($vatNotes as $note): ?>
+                        <p><strong>Natura IVA <?php echo htmlspecialchars($note['nature'], ENT_QUOTES, 'UTF-8'); ?>:</strong> <?php echo htmlspecialchars($note['reference'], ENT_QUOTES, 'UTF-8'); ?></p>
+                    <?php endforeach; ?>
                 </div>
             <?php endif; ?>
 

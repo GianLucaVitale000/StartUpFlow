@@ -345,6 +345,23 @@ const initializeFatturazione = () => {
         const bolloCheckbox = document.getElementById('bollo-to-client');
 
         const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+        // ---- Natura IVA (catalogo: /assets/data/natura.json) ----
+        const FORFETTARIO_NATURE = 'N2.2';
+        const FORFETTARIO_REFERENCE = "Operazione senza applicazione dell'IVA ai sensi dell'art. 1, commi 54-89, L. 190/2014";
+        let natureCatalog = [];
+        // Riempie un select con le Nature ammesse; in forfettario solo quelle marcate "forfettario".
+        const fillNatureOptions = (select, { forfettario, placeholder = '' }) => {
+            const previous = select.value;
+            const entries = natureCatalog.filter((entry) => !forfettario || entry.forfettario);
+            if (forfettario && entries.length === 0) {
+                entries.push({ value: FORFETTARIO_NATURE, name: 'Non soggette – altri casi' });
+            }
+            const options = entries.map((entry) => new Option(`${entry.value} – ${entry.name}`, entry.value));
+            if (!forfettario) options.unshift(new Option(placeholder || 'Seleziona la Natura', ''));
+            select.replaceChildren(...options);
+            if (options.some((option) => option.value === previous)) select.value = previous;
+        };
         const getTaxableTotal = () => {
             let total = 0;
             beniForm.querySelectorAll('[data-beni-row]').forEach((row) => {
@@ -395,17 +412,19 @@ const initializeFatturazione = () => {
             cassaVat.value = isForfettario ? '0' : (cassaVat.dataset.preferred || '22');
             const vatRate = Number(cassaVat.value) || 0;
 
-            // Natura: richiesta solo con aliquota 0; in forfettario è fissa.
+            // Natura: richiesta solo con aliquota 0; in forfettario è fissa (N2.2).
+            // I campi disabilitati non vengono inviati: il server riapplica comunque la stessa regola.
             if (vatRate > 0) {
-                cassaNature.value = '';
+                cassaNature.replaceChildren(new Option('Non applicabile', ''));
                 cassaNature.disabled = true;
                 cassaNature.required = false;
             } else if (isForfettario) {
-                cassaNature.value = 'non_soggetta';
+                fillNatureOptions(cassaNature, { forfettario: true });
+                cassaNature.value = FORFETTARIO_NATURE;
                 cassaNature.disabled = true;
                 cassaNature.required = false;
             } else {
-                if (cassaNature.value === '') cassaNature.value = 'non_soggetta';
+                fillNatureOptions(cassaNature, { forfettario: false });
                 cassaNature.disabled = false;
                 cassaNature.required = true;
             }
@@ -526,11 +545,24 @@ const initializeFatturazione = () => {
                 row.querySelector('[data-summary-tax]').id = `${rowId}-tax`;
                 row.querySelector('[name="spese_accessorie[]"]').id = `${rowId}-expenses`;
                 row.querySelector('[name="riferimento_normativo[]"]').id = `${rowId}-reference`;
-                natureSelect.value = isForfettario ? 'non_soggetta' : (previous?.nature || 'non_soggetta');
-                natureSelect.disabled = isForfettario;
+                if (rate > 0) {
+                    // Con IVA applicata la Natura non va indicata (lo SdI scarta il file se presente).
+                    natureSelect.replaceChildren(new Option('Non applicabile', ''));
+                    natureSelect.disabled = true;
+                } else if (isForfettario) {
+                    fillNatureOptions(natureSelect, { forfettario: true });
+                    natureSelect.value = FORFETTARIO_NATURE;
+                    natureSelect.disabled = true;
+                } else {
+                    fillNatureOptions(natureSelect, { forfettario: false });
+                    natureSelect.value = previous?.nature || '';
+                    natureSelect.disabled = false;
+                }
                 natureValue.value = natureSelect.value;
                 row.querySelector('[name="spese_accessorie[]"]').value = previous?.expenses || '0.00';
-                row.querySelector('[name="riferimento_normativo[]"]').value = previous?.reference || '';
+                const defaultReference = isForfettario && rate === 0 ? FORFETTARIO_REFERENCE : '';
+                const keepPrevious = previous?.reference && previous.reference !== FORFETTARIO_REFERENCE;
+                row.querySelector('[name="riferimento_normativo[]"]').value = keepPrevious ? previous.reference : defaultReference;
                 row.querySelectorAll('[data-summary-label]').forEach((label) => {
                     label.htmlFor = `${rowId}-${label.dataset.summaryLabel}`;
                 });
@@ -638,6 +670,16 @@ const initializeFatturazione = () => {
             row.after(newRow);
             updateIva();
         });
+        fetch('/assets/data/natura.json')
+            .then((response) => {
+                if (!response.ok) throw new Error('Impossibile caricare le nature IVA');
+                return response.json();
+            })
+            .then((catalog) => {
+                natureCatalog = Array.isArray(catalog) ? catalog : [];
+                updateSummary();
+            })
+            .catch((error) => console.error(error));
         regimeSelect.addEventListener('change', updateIva);
         beniForm.querySelectorAll('[data-beni-row]').forEach(updateTotal);
         updateIva();

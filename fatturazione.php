@@ -251,9 +251,7 @@ $username = $_SESSION['username'] ?? 'Utente';
                                 <input type="number" name="aliquota_iva1[]" data-summary-rate readonly>
                                 <label data-summary-label="nature">Natura</label>
                                 <select data-summary-nature>
-                                    <option value="non_soggetta">Non soggetta</option>
-                                    <option value="esente">Esente</option>
-                                    <option value="fuori_campo">Fuori campo IVA</option>
+                                    <option value="">Caricamento Natura IVA...</option>
                                 </select>
                                 <input type="hidden" name="natura[]" data-summary-nature-value>
                                 <label data-summary-label="taxable">Imponibile</label>
@@ -263,7 +261,7 @@ $username = $_SESSION['username'] ?? 'Utente';
                                 <label data-summary-label="expenses">Spese accessorie</label>
                                 <input type="number" name="spese_accessorie[]" step="0.01" min="0" value="0.00">
                                 <label data-summary-label="reference">Riferimento normativo</label>
-                                <input type="text" name="riferimento_normativo[]" placeholder="Inserisci riferimento normativo">
+                                <input type="text" name="riferimento_normativo[]" maxlength="100" placeholder="Inserisci riferimento normativo">
                             </div>
                         </div>
                     </template>
@@ -292,10 +290,7 @@ $username = $_SESSION['username'] ?? 'Utente';
                             </select>
                             <label for="cassa-natura">Natura</label>
                             <select id="cassa-natura" name="cassa_natura">
-                                <option value="">Non applicabile</option>
-                                <option value="non_soggetta">Non soggetta</option>
-                                <option value="esente">Esente</option>
-                                <option value="fuori_campo">Fuori campo IVA</option>
+                                <option value="">Caricamento Natura IVA...</option>
                             </select>
                             <label for="cassa-importo">Contributo cassa</label>
                             <input type="number" id="cassa-importo" step="0.01" readonly tabindex="-1">
