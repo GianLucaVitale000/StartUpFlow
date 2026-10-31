@@ -99,6 +99,15 @@ const initializeFatturazione = () => {
                 : `${value} ${currency}`;
         };
 
+        const formatDate = (dateString) => {
+            if (!dateString) return '—';
+            const parts = dateString.split('-');
+            if (parts.length === 3) {
+                return `${parts[2]}-${parts[1]}-${parts[0]}`;
+            }
+            return dateString;
+        };
+
         const renderInvoices = (invoices) => {
             invoiceList.replaceChildren();
             if (invoices.length === 0) {
@@ -120,7 +129,7 @@ const initializeFatturazione = () => {
                 const title = document.createElement('strong');
                 title.textContent = invoice.document_number;
                 const subtitle = document.createElement('small');
-                subtitle.textContent = `${invoice.client_name} · ${invoice.issue_date}`;
+                subtitle.textContent = `${invoice.client_name} · ${formatDate(invoice.issue_date)}`;
                 identity.append(title, subtitle);
                 const total = document.createElement('strong');
                 total.className = 'invoice-entry__total';
@@ -132,15 +141,13 @@ const initializeFatturazione = () => {
                 content.className = 'invoice-entry__details';
                 const metadata = document.createElement('dl');
                 metadata.className = 'invoice-metadata';
-                addDetail(metadata, 'Cliente', invoice.client_name);
-                addDetail(metadata, 'Data documento', invoice.issue_date);
-                addDetail(metadata, 'Scadenza', invoice.due_date);
                 addDetail(metadata, 'Regime fiscale', invoice.tax_regime);
+                addDetail(metadata, 'Termine di pagamento', formatDate(invoice.due_date));
+                addDetail(metadata, 'Stato pagamento', invoice.is_paid ? 'Pagata' : 'Da pagare');
                 if (invoice.bollo_to_client && Number(invoice.bollo) > 0) {
                     addDetail(metadata, 'Marca da bollo addebitata', displayValue(invoice.bollo, invoice.currency));
                 }
-                addDetail(metadata, 'Stato pagamento', invoice.is_paid ? 'Pagata' : 'Da pagare');
-                addDetail(metadata, 'Totale', displayValue(invoice.total, invoice.currency));
+                
                 content.append(metadata);
 
                 if ((invoice.causale || '').trim()) {
@@ -214,13 +221,15 @@ const initializeFatturazione = () => {
                 actionsDiv.style.cssText = 'margin-top: 1.5rem; display: flex; gap: 1rem;';
 
                 const pdfButton = document.createElement('a');
-                pdfButton.className = 'button secondary';
+                pdfButton.className = 'profile-modal__save';
+                pdfButton.style.textDecoration = 'none';
                 pdfButton.textContent = 'Scarica PDF';
                 pdfButton.href = `/invoice/download-invoice.php?id=${invoice.id}&format=pdf`;
                 pdfButton.target = '_blank';
 
                 const xmlButton = document.createElement('a');
-                xmlButton.className = 'button secondary';
+                xmlButton.className = 'profile-modal__save';
+                xmlButton.style.textDecoration = 'none';
                 xmlButton.textContent = 'Scarica XML';
                 xmlButton.href = `/invoice/download-invoice.php?id=${invoice.id}&format=xml`;
                 xmlButton.target = '_blank';

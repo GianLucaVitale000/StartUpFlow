@@ -185,8 +185,8 @@ try {
                 <div>
                     <h1>Fattura</h1>
                     <p><strong>N. Documento:</strong> <?php echo htmlspecialchars($documentNumber, ENT_QUOTES, 'UTF-8'); ?></p>
-                    <p><strong>Data:</strong> <?php echo htmlspecialchars($invoice['issue_date'], ENT_QUOTES, 'UTF-8'); ?></p>
-                    <p><strong>Scadenza:</strong> <?php echo htmlspecialchars($invoice['due_date'], ENT_QUOTES, 'UTF-8'); ?></p>
+                    <p><strong>Data:</strong> <?php echo htmlspecialchars(!empty($invoice['issue_date']) ? date('d-m-Y', strtotime($invoice['issue_date'])) : '', ENT_QUOTES, 'UTF-8'); ?></p>
+                    <p><strong>Scadenza:</strong> <?php echo htmlspecialchars(!empty($invoice['due_date']) ? date('d-m-Y', strtotime($invoice['due_date'])) : '', ENT_QUOTES, 'UTF-8'); ?></p>
                 </div>
             </div>
 
