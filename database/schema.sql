@@ -229,16 +229,13 @@ CREATE TABLE IF NOT EXISTS invoices (
     issue_date DATE NOT NULL,
     due_date DATE NOT NULL,
     currency VARCHAR(3) NOT NULL DEFAULT 'EUR',
-    tax_regime ENUM(
-        'forfettario',
-        'ordinario'
-    ) NOT NULL,
-    total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-    bollo DECIMAL(10,2) NOT NULL DEFAULT 0.00,
-    bollo_to_client TINYINT(1) NOT NULL DEFAULT 0,
+    tax_regime VARCHAR(16) NOT NULL,                      -- RegimeFiscale FatturaPA (RF01, RF19...), validato da assets/data/regimi-fiscali.json
+    total DECIMAL(10,2) NOT NULL DEFAULT 0.00,          
+    bollo DECIMAL(10,2) NOT NULL DEFAULT 0.00,            -- ImportoBollo (IVA esclusa)
+    bollo_to_client TINYINT(1) NOT NULL DEFAULT 0,        -- True se la marca da bollo è addebitata al cliente (BolloVirtuale = SI)
     cassa_type CHAR(4) NULL,                              -- TipoCassa FatturaPA (TC01...TC22), NULL = nessuna cassa
     cassa_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,     -- ImportoContributoCassa (IVA sul contributo esclusa)
-    is_paid BOOLEAN NOT NULL DEFAULT FALSE,
+    is_paid BOOLEAN NOT NULL DEFAULT FALSE,               -- True se la fattura è stata saldata (pagamenti >= total + bollo + cassa_amount)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         ON UPDATE CURRENT_TIMESTAMP,

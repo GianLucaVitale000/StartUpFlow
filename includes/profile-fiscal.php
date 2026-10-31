@@ -14,12 +14,104 @@ declare(strict_types=1);
  * Stabile organizzazione e rappresentante fiscale del cedente NON sono gestiti.
  */
 
-// Regimi fiscali selezionabili. Per abilitarne altri (RF02, RF04...) basta aggiungerli qui:
-// verificare prima che il resto dell'applicazione (calcolo IVA, natura) li supporti.
-const TAX_REGIMES_SUPPORTED = [
-    'RF01' => 'RF01 – Regime ordinario',
-    'RF19' => 'RF19 – Regime forfettario',
+/**
+ * Regimi di riserva, usati solo se assets/data/regimi-fiscali.json non è leggibile
+ * (così l'intero sito resta utilizzabile; l'errore finisce nel log).
+ */
+const FISCAL_REGIMES_FALLBACK = [
+    ['value' => 'RF01', 'name' => 'Regime ordinario', 'supported' => true, 'applies_vat' => true, 'withholding' => true],
+    ['value' => 'RF19', 'name' => 'Regime forfettario (art. 1, c. 54-89, L. 190/2014)', 'supported' => true, 'applies_vat' => false,
+        'fixed_nature' => 'N2.2', 'default_reference' => "Operazione senza applicazione dell'IVA ai sensi dell'art. 1, commi 54-89, L. 190/2014",
+        'withholding' => false],
 ];
+
+/**
+ * Catalogo dei regimi fiscali (assets/data/regimi-fiscali.json), indicizzato per codice.
+ *
+ * Ogni voce descrive cosa comporta il regime nella fatturazione:
+ *  - supported:         selezionabile nel profilo ed utilizzabile per emettere fatture;
+ *  - applies_vat:       false = IVA non applicata (aliquota sempre 0, Natura imposta dal regime);
+ *  - fixed_nature:      Natura imposta quando l'IVA non si applica (obbligatoria in quel caso);
+ *  - default_reference: riferimento normativo predefinito (RiferimentoNormativo, max 100 caratteri);
+ *  - withholding:       il regime ammette la ritenuta d'acconto.
+ * Per abilitare un nuovo regime: impostare supported e le sue regole nel JSON, e verificare il resto dell'applicazione.
+ *
+ * @return array<string,array<string,mixed>>
+ */
+function fiscalRegimeCatalog(): array
+{
+    static $catalog = null;
+    if ($catalog !== null) {
+        return $catalog;
+    }
+
+    $path = dirname(__DIR__) . '/assets/data/regimi-fiscali.json';
+    $data = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+    if (!is_array($data)) {
+        error_log('Catalogo regimi fiscali non leggibile: ' . $path);
+        $data = FISCAL_REGIMES_FALLBACK;
+    }
+
+    $catalog = [];
+    foreach ($data as $entry) {
+        if (!is_array($entry) || !isset($entry['value'], $entry['name'])) {
+            continue;
+        }
+        $code = strtoupper(trim((string) $entry['value']));
+        $appliesVat = (bool) ($entry['applies_vat'] ?? true);
+        $fixedNature = (string) ($entry['fixed_nature'] ?? '');
+        $supported = (bool) ($entry['supported'] ?? false);
+        if ($supported && !$appliesVat && $fixedNature === '') {
+            // Senza IVA serve una Natura: un regime configurato così produrrebbe XML scartati dallo SdI.
+            error_log('Regime ' . $code . ': applies_vat=false senza fixed_nature, regime disabilitato');
+            $supported = false;
+        }
+        $reference = (string) ($entry['default_reference'] ?? '');
+        $catalog[$code] = [
+            'value' => $code,
+            'name' => (string) $entry['name'],
+            'supported' => $supported,
+            'applies_vat' => $appliesVat,
+            'fixed_nature' => !$appliesVat && $fixedNature !== '' ? $fixedNature : null,
+            'default_reference' => !$appliesVat && $reference !== '' ? $reference : null,
+            'withholding' => (bool) ($entry['withholding'] ?? true),
+        ];
+    }
+
+    return $catalog;
+}
+
+/** Regime dal codice (es. "RF19"); null se il codice non esiste nel catalogo. */
+function fiscalRegime(?string $code): ?array
+{
+    return fiscalRegimeCatalog()[strtoupper(trim((string) $code))] ?? null;
+}
+
+/** Etichette dei soli regimi supportati, nel formato "RF19 – Regime forfettario (...)". */
+function fiscalSupportedRegimes(): array
+{
+    $labels = [];
+    foreach (fiscalRegimeCatalog() as $code => $regime) {
+        if ($regime['supported']) {
+            $labels[$code] = $code . ' – ' . $regime['name'];
+        }
+    }
+
+    return $labels;
+}
+
+/** Etichetta leggibile di un regime salvato; riconosce anche i vecchi valori "forfettario"/"ordinario" delle fatture storiche. */
+function fiscalRegimeLabel(?string $stored): string
+{
+    $code = strtoupper(trim((string) $stored));
+    $code = ['FORFETTARIO' => 'RF19', 'ORDINARIO' => 'RF01'][$code] ?? $code;
+    $regime = fiscalRegime($code);
+
+    return $regime !== null ? $code . ' – ' . $regime['name'] : (string) $stored;
+}
+
+// Elenco dei regimi selezionabili (usato da profilo e fatturazione): derivato dal catalogo, non più scritto a mano.
+define('TAX_REGIMES_SUPPORTED', fiscalSupportedRegimes());
 
 /** Colonne di users_profiles scritte da process-profile.php (corrispondono ai campi del form). */
 const FISCAL_PROFILE_COLUMNS = [

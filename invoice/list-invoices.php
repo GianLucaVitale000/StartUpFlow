@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/profile-fiscal.php';
 require_once __DIR__ . '/../vendor/autoload.php';
 
 use FatturaElettronicaPhp\FatturaElettronica\DigitalDocument;
@@ -61,6 +62,16 @@ try {
 		$invoice['client_name'] = $clientName !== '' ? $clientName : 'Cliente';
 		$invoice['is_paid'] = (bool) $invoice['is_paid'];
 		$invoice['bollo_to_client'] = (bool) $invoice['bollo_to_client'];
+		$invoice['tax_regime_label'] = fiscalRegimeLabel((string) $invoice['tax_regime']);
+		
+		// Salvaguardia formato data in gg-mm-aaaa per l'output se utile
+		if (!empty($invoice['issue_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $invoice['issue_date'])) {
+			$invoice['issue_date_formatted'] = date('d-m-Y', strtotime($invoice['issue_date']));
+		}
+		if (!empty($invoice['due_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $invoice['due_date'])) {
+			$invoice['due_date_formatted'] = date('d-m-Y', strtotime($invoice['due_date']));
+		}
+
 		$invoice['items'] = [];
 		$invoice['causale'] = '';
 		$invoice['xml_available'] = false;

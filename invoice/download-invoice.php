@@ -62,8 +62,10 @@ try {
         $items = [];
         $causale = '';
         $cassaAmount = 0.0;
+        $expensesAmount = 0.0;
         $virtualDuty = '';
         $vatNotes = [];
+        $subtotal = 0.0;
         if (is_file($xmlPath)) {
             try {
                 $eDoc = DigitalDocument::parseFrom($xmlPath);
@@ -76,6 +78,9 @@ try {
                     $virtualDuty = $instance->getVirtualDuty();
 
                     foreach ($instance->getTotals() as $summaryTotal) {
+                        if (method_exists($summaryTotal, 'getOtherExpenses') && $summaryTotal->getOtherExpenses() !== null) {
+                            $expensesAmount += (float) $summaryTotal->getOtherExpenses();
+                        }
                         if ($summaryTotal->getVatNature() !== null) {
                             $vatNotes[] = [
                                 'nature' => (string) $summaryTotal->getVatNature(),
@@ -91,22 +96,28 @@ try {
 
                     if ($eDoc->isSimplified()) {
                         foreach ($instance->getSimplifiedLines() as $line) {
+                            $lineTaxable = (float)$line->getTotal();
+                            $subtotal += $lineTaxable;
                             $items[] = [
                                 'Description' => $line->getDescription(),
                                 'Quantity' => '1',
-                                'UnitPrice' => number_format((float)$line->getTotal(), 2, '.', ''),
+                                'UnitPrice' => number_format($lineTaxable, 2, '.', ''),
                                 'VatRate' => (string)($line->getTaxPercentage() ?? 0),
-                                'LineTotal' => number_format((float)$line->getTotal(), 2, '.', ''),
+                                'LineTotal' => number_format($lineTaxable, 2, '.', ''),
+                                'TaxableAmount' => $lineTaxable,
                             ];
                         }
                     } else {
                         foreach ($instance->getLines() as $line) {
+                            $lineTaxable = (float)$line->getTotal();
+                            $subtotal += $lineTaxable;
                             $items[] = [
                                 'Description' => $line->getDescription(),
                                 'Quantity' => number_format((float)$line->getQuantity(), 2, '.', ''),
                                 'UnitPrice' => number_format((float)$line->getUnitPrice(), 2, '.', ''),
                                 'VatRate' => (string)($line->getTaxPercentage() ?? 0),
-                                'LineTotal' => number_format(round((float)$line->getTotal() * (1 + (float)($line->getTaxPercentage() ?? 0) / 100), 2), 2, '.', ''),
+                                'LineTotal' => number_format(round($lineTaxable * (1 + (float)($line->getTaxPercentage() ?? 0) / 100), 2), 2, '.', ''),
+                                'TaxableAmount' => $lineTaxable,
                             ];
                         }
                     }
@@ -121,6 +132,11 @@ try {
                     $causaleNode = $xml->getElementsByTagName('Causale')->item(0);
                     if ($causaleNode instanceof DOMElement && $causale === '') {
                         $causale = $causaleNode->textContent;
+                    }
+                    foreach ($xml->getElementsByTagName('SpeseAccessorie') as $speseNode) {
+                        if ($speseNode instanceof DOMElement) {
+                            $expensesAmount += (float) $speseNode->textContent;
+                        }
                     }
                     $itemFields = ['Description', 'Quantity', 'UnitPrice', 'VatRate', 'Nature', 'TaxableAmount', 'TaxAmount', 'AdditionalExpenses', 'LegalReference', 'LineTotal'];
                     foreach ($xml->getElementsByTagName('Item') as $itemNode) {
@@ -137,9 +153,16 @@ try {
                                 'UnitPrice' => $item['UnitPrice'] ?? '0',
                                 'VatRate' => $item['VatRate'] ?? '0',
                                 'LineTotal' => $item['LineTotal'] ?? '0',
+                                'TaxableAmount' => (float)($item['TaxableAmount'] ?? ($item['LineTotal'] ?? 0)),
                             ];
                         }
                     }
+                }
+            }
+
+            if ($subtotal === 0.0 && !empty($items)) {
+                foreach ($items as $item) {
+                    $subtotal += (float)($item['TaxableAmount'] ?? ((float)($item['Quantity'] ?? 1) * (float)($item['UnitPrice'] ?? 0)));
                 }
             }
         }
@@ -184,9 +207,11 @@ try {
             <div class="header">
                 <div>
                     <h1>Fattura</h1>
-                    <p><strong>N. Documento:</strong> <?php echo htmlspecialchars($documentNumber, ENT_QUOTES, 'UTF-8'); ?></p>
-                    <p><strong>Data:</strong> <?php echo htmlspecialchars(!empty($invoice['issue_date']) ? date('d-m-Y', strtotime($invoice['issue_date'])) : '', ENT_QUOTES, 'UTF-8'); ?></p>
-                    <p><strong>Scadenza:</strong> <?php echo htmlspecialchars(!empty($invoice['due_date']) ? date('d-m-Y', strtotime($invoice['due_date'])) : '', ENT_QUOTES, 'UTF-8'); ?></p>
+                    <div style="display: flex; flex-direction: row; gap: 1rem;">
+                        <p><strong>N. Documento:</strong> <?php echo htmlspecialchars($documentNumber, ENT_QUOTES, 'UTF-8'); ?></p>
+                        <p><strong>Data:</strong> <?php echo htmlspecialchars(!empty($invoice['issue_date']) ? date('d-m-Y', strtotime($invoice['issue_date'])) : '', ENT_QUOTES, 'UTF-8'); ?></p>
+                        <p><strong>Termine di Pagamento:</strong> <?php echo htmlspecialchars(!empty($invoice['due_date']) ? date('d-m-Y', strtotime($invoice['due_date'])) : '', ENT_QUOTES, 'UTF-8'); ?></p>
+                    </div>
                 </div>
             </div>
 
@@ -223,7 +248,7 @@ try {
             <?php endif; ?>
 
             <?php if (!empty($vatNotes)): ?>
-                <div style="margin-bottom: 2rem; font-size: 0.9rem;">
+                <div style="margin-bottom: 0.2rem; font-size: 0.7rem;">
                     <?php foreach ($vatNotes as $note): ?>
                         <p><strong>Natura IVA <?php echo htmlspecialchars($note['nature'], ENT_QUOTES, 'UTF-8'); ?>:</strong> <?php echo htmlspecialchars($note['reference'], ENT_QUOTES, 'UTF-8'); ?></p>
                     <?php endforeach; ?>
@@ -231,12 +256,15 @@ try {
             <?php endif; ?>
 
             <?php if ($virtualDuty === 'SI' || (float)$invoice['bollo'] > 0): ?>
-                <div style="margin-bottom: 2rem; padding: 1rem; background: #f8f9fa; border-left: 4px solid #111; font-size: 0.9rem;">
+                <div style="margin-bottom: 1rem; font-size: 0.7rem;">
                     <p><strong>Imposta di bollo assolta in modo virtuale ai sensi dell'art. 15 del D.P.R. 642/1972 e del D.M. 17/06/2014</strong></p>
                     <?php if (!empty($invoice['bollo_to_client']) && (float) $invoice['bollo'] > 0): ?>
                         <p>Importo bollo addebitato al cliente: <strong><?php echo number_format((float) $invoice['bollo'], 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></strong></p>
                     <?php endif; ?>
                 </div>
+                <p style="font-size: 0.7rem;">
+                    L'invio della copia analogica (PDF) della fattura elettronica è un servizio di cortesia. L’originale della fattura elettronica è disponibile nell’area riservata del sito web Fatture e Corrispettivi dell’Agenzia delle entrate e costituisce l’unico documento affidabile ai fini fiscali. 
+                    Invitiamo l'utente a verificare il contenuto della copia analogica al fine di escludere il rischio di eventuali inesattezze, imprecisioni e/o manomissioni di terzi.</p>
             <?php endif; ?>
 
             <table>
@@ -244,7 +272,7 @@ try {
                     <tr>
                         <th>Descrizione</th>
                         <th>Q.tà</th>
-                        <th>Prezzo Unitario</th>
+                        <th>P.U.</th>
                         <th>IVA %</th>
                         <th>Totale Riga</th>
                     </tr>
@@ -263,15 +291,25 @@ try {
             </table>
 
             <div class="totals">
+                <div>
+                    <span>Totale servizi/merci:</span>
+                    <span><?php echo number_format($subtotal, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
+                </div>
+                <?php if ($expensesAmount > 0): ?>
+                    <div>
+                        <span>Spese accessorie imp.:</span>
+                        <span><?php echo number_format($expensesAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
+                    </div>
+                <?php endif; ?>
                 <?php if ($cassaAmount > 0): ?>
                     <div>
-                        <span>Contributo Cassa:</span>
+                        <span>Rivalsa INPS/Cassa:</span>
                         <span><?php echo number_format($cassaAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
                     </div>
                 <?php endif; ?>
                 <?php if (!empty($invoice['bollo_to_client']) && (float) $invoice['bollo'] > 0): ?>
                     <div>
-                        <span>Marca da bollo:</span>
+                        <span>Imposta di bollo:</span>
                         <span><?php echo number_format((float) $invoice['bollo'], 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
                     </div>
                 <?php endif; ?>

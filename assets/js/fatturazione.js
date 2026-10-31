@@ -21,6 +21,11 @@ const initializeFatturazione = () => {
     const useClientButton = document.getElementById('use-client-button');
     const billingForm = document.getElementById('billing-form');
     const regimeSelect = document.getElementById('regime-fiscale');
+    // Le regole del regime (catalogo regimi-fiscali.json) arrivano dal server come attributi data-* dell'input nascosto.
+    const regimeWithoutVat = () => regimeSelect?.dataset.appliesVat === '0';
+    const regimeFixedNature = () => regimeSelect?.dataset.fixedNature || '';
+    const regimeDefaultReference = () => regimeSelect?.dataset.defaultReference || '';
+    const regimeNoWithholding = () => regimeSelect?.dataset.withholding === '0';
     const beniForm = document.getElementById('beni-servizi-form');
     const documentDate = document.getElementById('data-documento');
     const dueDate = document.getElementById('data-scadenza');
@@ -141,8 +146,9 @@ const initializeFatturazione = () => {
                 content.className = 'invoice-entry__details';
                 const metadata = document.createElement('dl');
                 metadata.className = 'invoice-metadata';
-                addDetail(metadata, 'Regime fiscale', invoice.tax_regime);
-                addDetail(metadata, 'Termine di pagamento', formatDate(invoice.due_date));
+                addDetail(metadata, 'Regime fiscale', invoice.tax_regime_label || invoice.tax_regime);
+                addDetail(metadata, 'Data documento', formatDate(invoice.issue_date));
+                addDetail(metadata, 'Termine pagamento', formatDate(invoice.due_date));
                 addDetail(metadata, 'Stato pagamento', invoice.is_paid ? 'Pagata' : 'Da pagare');
                 if (invoice.bollo_to_client && Number(invoice.bollo) > 0) {
                     addDetail(metadata, 'Marca da bollo addebitata', displayValue(invoice.bollo, invoice.currency));
@@ -356,18 +362,17 @@ const initializeFatturazione = () => {
         const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
         // ---- Natura IVA (catalogo: /assets/data/natura.json) ----
-        const FORFETTARIO_NATURE = 'N2.2';
-        const FORFETTARIO_REFERENCE = "Operazione senza applicazione dell'IVA ai sensi dell'art. 1, commi 54-89, L. 190/2014";
         let natureCatalog = [];
-        // Riempie un select con le Nature ammesse; in forfettario solo quelle marcate "forfettario".
-        const fillNatureOptions = (select, { forfettario, placeholder = '' }) => {
+        // Riempie un select con le Nature ammesse. Con restricted=true (regime senza IVA) resta solo la Natura imposta dal regime.
+        const fillNatureOptions = (select, { restricted, placeholder = '' }) => {
             const previous = select.value;
-            const entries = natureCatalog.filter((entry) => !forfettario || entry.forfettario);
-            if (forfettario && entries.length === 0) {
-                entries.push({ value: FORFETTARIO_NATURE, name: 'Non soggette – altri casi' });
+            const fixed = regimeFixedNature();
+            let entries = restricted ? natureCatalog.filter((entry) => entry.value === fixed) : natureCatalog;
+            if (restricted && entries.length === 0 && fixed) {
+                entries = [{ value: fixed, name: fixed }];
             }
             const options = entries.map((entry) => new Option(`${entry.value} – ${entry.name}`, entry.value));
-            if (!forfettario) options.unshift(new Option(placeholder || 'Seleziona la Natura', ''));
+            if (!restricted) options.unshift(new Option(placeholder || 'Seleziona la Natura', ''));
             select.replaceChildren(...options);
             if (options.some((option) => option.value === previous)) select.value = previous;
         };
@@ -378,6 +383,11 @@ const initializeFatturazione = () => {
                 const unitPrice = Number(row.querySelector('[name="prezzo_unitario[]"]').value) || 0;
                 total += quantity * unitPrice;
             });
+            if (summaryList) {
+                summaryList.querySelectorAll('[name="spese_accessorie[]"]').forEach((input) => {
+                    total += Number(input.value) || 0;
+                });
+            }
             return roundMoney(total);
         };
 
@@ -404,7 +414,7 @@ const initializeFatturazione = () => {
                 return;
             }
             const hasCassa = cassaSelect.value !== '';
-            const isForfettario = regimeSelect.value === 'RF19' || regimeSelect.value === 'regime forfettario';
+            const noVatRegime = regimeWithoutVat();
             cassaDetails.hidden = !hasCassa;
             cassaRate.required = hasCassa;
             cassaTaxable.required = hasCassa;
@@ -416,31 +426,30 @@ const initializeFatturazione = () => {
                 return;
             }
 
-            // IVA sul contributo: in forfettario sempre 0, in ordinario si ricorda la scelta (default 22).
-            cassaVat.disabled = isForfettario;
-            cassaVat.value = isForfettario ? '0' : (cassaVat.dataset.preferred || '22');
+            // IVA sul contributo: in regimi senza IVA sempre 0, in ordinario si ricorda la scelta (default 22).
+            cassaVat.disabled = noVatRegime;
+            cassaVat.value = noVatRegime ? '0' : (cassaVat.dataset.preferred || '22');
             const vatRate = Number(cassaVat.value) || 0;
 
-            // Natura: richiesta solo con aliquota 0; in forfettario è fissa (N2.2).
-            // I campi disabilitati non vengono inviati: il server riapplica comunque la stessa regola.
+            // Natura: richiesta solo con aliquota 0; in regimi senza IVA è fissa.
             if (vatRate > 0) {
                 cassaNature.replaceChildren(new Option('Non applicabile', ''));
                 cassaNature.disabled = true;
                 cassaNature.required = false;
-            } else if (isForfettario) {
-                fillNatureOptions(cassaNature, { forfettario: true });
-                cassaNature.value = FORFETTARIO_NATURE;
+            } else if (noVatRegime) {
+                fillNatureOptions(cassaNature, { restricted: true });
+                cassaNature.value = regimeFixedNature();
                 cassaNature.disabled = true;
                 cassaNature.required = false;
             } else {
-                fillNatureOptions(cassaNature, { forfettario: false });
+                fillNatureOptions(cassaNature, { restricted: false });
                 cassaNature.disabled = false;
                 cassaNature.required = true;
             }
 
-            // I forfettari non applicano ritenuta d'acconto.
-            cassaWithholding.disabled = isForfettario;
-            if (isForfettario) cassaWithholding.checked = false;
+            // Alcuni regimi non prevedono la ritenuta d'acconto.
+            cassaWithholding.disabled = regimeNoWithholding();
+            if (regimeNoWithholding()) cassaWithholding.checked = false;
 
             // L'imponibile segue le righe finché l'utente non lo modifica a mano.
             if (cassaTaxable.dataset.manual !== 'true') cassaTaxable.value = getTaxableTotal().toFixed(2);
@@ -477,8 +486,6 @@ const initializeFatturazione = () => {
                     cassaSelect.replaceChildren(new Option('Impossibile caricare le casse previdenziali', ''));
                 });
 
-            // Solo i campi numerici: i select si gestiscono su "change", perché "input" scatta prima
-            // e un refresh a quel punto ripristinerebbe il valore precedente.
             cassaForm.addEventListener('input', (event) => {
                 if (!event.target.matches('input[type="number"]')) return;
                 if (event.target === cassaTaxable) cassaTaxable.dataset.manual = 'true';
@@ -490,8 +497,8 @@ const initializeFatturazione = () => {
                     cassaRate.value = entry && entry.default_rate != null ? Number(entry.default_rate).toFixed(2) : '';
                     cassaTaxable.dataset.manual = 'false';
                 } else if (event.target === cassaTaxable && cassaTaxable.value === '') {
-                    cassaTaxable.dataset.manual = 'false'; // campo svuotato: torna al calcolo automatico
-                } else if (event.target === cassaVat && regimeSelect.value !== 'RF19' && regimeSelect.value !== 'regime forfettario') {
+                    cassaTaxable.dataset.manual = 'false';
+                } else if (event.target === cassaVat && !regimeWithoutVat()) {
                     cassaVat.dataset.preferred = cassaVat.value;
                 }
                 refreshCassa();
@@ -500,17 +507,16 @@ const initializeFatturazione = () => {
                 invoiceForm.addEventListener('reset', () => {
                     cassaTaxable.dataset.manual = 'false';
                     delete cassaVat.dataset.preferred;
-                    setTimeout(refreshCassa, 0); // il reset dei campi avviene dopo l'evento
+                    setTimeout(refreshCassa, 0);
                 });
             }
         }
 
         const updateBolloVisibility = () => {
             if (!bolloContainer || !bolloCheckbox) return;
-            const isForfettario = regimeSelect.value === 'RF19' || regimeSelect.value === 'regime forfettario';
-            // Il contributo cassa concorre al totale non soggetto a IVA su cui si valuta il bollo.
+            const noVatRegime = regimeWithoutVat();
             const totalTaxable = getTaxableTotal() + cassaContribution;
-            const showBollo = isForfettario && roundMoney(totalTaxable) > 77.47;
+            const showBollo = noVatRegime && roundMoney(totalTaxable) > 77.47;
             bolloContainer.hidden = !showBollo;
             if (!showBollo) {
                 bolloCheckbox.checked = false;
@@ -544,7 +550,7 @@ const initializeFatturazione = () => {
                 const previous = previousValues.get(summaryId);
                 const natureSelect = row.querySelector('[data-summary-nature]');
                 const natureValue = row.querySelector('[data-summary-nature-value]');
-                const isForfettario = regimeSelect.value === 'RF19' || regimeSelect.value === 'regime forfettario';
+                const noVatRegime = regimeWithoutVat();
                 const itemTitle = description || `Beni e Servizi ${index + 1}`;
                 row.dataset.vatSummaryId = summaryId;
                 row.querySelector('[data-vat-summary-title]').textContent = `Riepilogo importi per aliquota - ${itemTitle}`;
@@ -555,22 +561,21 @@ const initializeFatturazione = () => {
                 row.querySelector('[name="spese_accessorie[]"]').id = `${rowId}-expenses`;
                 row.querySelector('[name="riferimento_normativo[]"]').id = `${rowId}-reference`;
                 if (rate > 0) {
-                    // Con IVA applicata la Natura non va indicata (lo SdI scarta il file se presente).
                     natureSelect.replaceChildren(new Option('Non applicabile', ''));
                     natureSelect.disabled = true;
-                } else if (isForfettario) {
-                    fillNatureOptions(natureSelect, { forfettario: true });
-                    natureSelect.value = FORFETTARIO_NATURE;
+                } else if (noVatRegime) {
+                    fillNatureOptions(natureSelect, { restricted: true });
+                    natureSelect.value = regimeFixedNature();
                     natureSelect.disabled = true;
                 } else {
-                    fillNatureOptions(natureSelect, { forfettario: false });
+                    fillNatureOptions(natureSelect, { restricted: false });
                     natureSelect.value = previous?.nature || '';
                     natureSelect.disabled = false;
                 }
                 natureValue.value = natureSelect.value;
                 row.querySelector('[name="spese_accessorie[]"]').value = previous?.expenses || '0.00';
-                const defaultReference = isForfettario && rate === 0 ? FORFETTARIO_REFERENCE : '';
-                const keepPrevious = previous?.reference && previous.reference !== FORFETTARIO_REFERENCE;
+                const defaultReference = noVatRegime && rate === 0 ? regimeDefaultReference() : '';
+                const keepPrevious = previous?.reference && previous.reference !== regimeDefaultReference();
                 row.querySelector('[name="riferimento_normativo[]"]').value = keepPrevious ? previous.reference : defaultReference;
                 row.querySelectorAll('[data-summary-label]').forEach((label) => {
                     label.htmlFor = `${rowId}-${label.dataset.summaryLabel}`;
@@ -582,6 +587,11 @@ const initializeFatturazione = () => {
             });
             refreshCassa();
         };
+        summaryList?.addEventListener('input', (event) => {
+            if (event.target.matches('[name="spese_accessorie[]"]')) {
+                refreshCassa();
+            }
+        });
         summaryList?.addEventListener('change', (event) => {
             if (!event.target.matches('[data-summary-nature]')) return;
             event.target.closest('[data-vat-summary-row]')
@@ -598,23 +608,22 @@ const initializeFatturazione = () => {
         };
 
         const updateIva = () => {
-            const isForfettario = regimeSelect.value === 'RF19' || regimeSelect.value === 'regime forfettario';
+            const noVatRegime = regimeWithoutVat();
             beniForm.querySelectorAll('select[name="aliquota_iva[]"]').forEach((ivaSelect) => {
                 const row = ivaSelect.closest('[data-beni-row]');
                 ivaSelect.querySelectorAll('option').forEach((option) => {
-                    option.disabled = isForfettario ? option.value !== '0' : option.value === '0';
-                    option.hidden = !isForfettario && option.value === '0';
+                    option.disabled = noVatRegime ? option.value !== '0' : option.value === '0';
+                    option.hidden = !noVatRegime && option.value === '0';
                 });
 
-                // In ordinario si riusa l'aliquota ricordata per la riga (ordine o scelta manuale), altrimenti 22.
                 const preferred = row.dataset.preferredRate;
                 const preferredIsValid = ['4', '5', '10', '22'].includes(preferred);
-                ivaSelect.value = isForfettario ? '0' : (preferredIsValid ? preferred : '22');
-                ivaSelect.disabled = isForfettario;
+                ivaSelect.value = noVatRegime ? '0' : (preferredIsValid ? preferred : '22');
+                ivaSelect.disabled = noVatRegime;
 
                 const hiddenIvaInput = row.querySelector('[data-aliquota-iva-value]');
                 hiddenIvaInput.value = ivaSelect.value;
-                hiddenIvaInput.disabled = !isForfettario;
+                hiddenIvaInput.disabled = !noVatRegime;
                 updateTotal(row);
             });
             updateSummary();
@@ -630,8 +639,7 @@ const initializeFatturazione = () => {
         beniForm.addEventListener('change', (event) => {
             if (event.target.matches('select[name="aliquota_iva[]"]')) {
                 const row = event.target.closest('[data-beni-row]');
-                // Ricorda le scelte manuali solo in ordinario: in forfettario il valore è forzato a 0.
-                if (regimeSelect.value !== 'RF19' && regimeSelect.value !== 'regime forfettario') {
+                if (!regimeWithoutVat()) {
                     row.dataset.preferredRate = event.target.value;
                 }
                 const hiddenIvaInput = row.querySelector('[data-aliquota-iva-value]');
@@ -654,7 +662,7 @@ const initializeFatturazione = () => {
             const newRowId = nextBeniRowId;
             nextBeniRowId += 1;
             newRow.dataset.vatSummaryId = `item-${newRowId}`;
-            delete newRow.dataset.preferredRate; // la riga clonata non eredita l'aliquota della prima
+            delete newRow.dataset.preferredRate;
             newRow.querySelector('[data-add-beni]').remove();
             newRow.querySelectorAll('input[id], select[id]').forEach((field) => {
                 const baseId = field.id.replace(/-\d+$/, '');
@@ -768,7 +776,6 @@ const initializeFatturazione = () => {
         return;
     }
 
-    // Se mancano gli elementi essenziali del blocco cliente, esce senza marcare come inizializzato.
     if (!clientForm || !clientSelect || !useClientButton || !clientSelectPanel || !billingForm) {
         return;
     }
@@ -781,7 +788,7 @@ const initializeFatturazione = () => {
     const fields = ['id', 'client_type', 'company_name', 'first_name', 'last_name', 'vat_number', 'cf', 'address', 'city', 'state', 'postal_code', 'country', 'email', 'phone', 'crm_status'];
     const modeButton = (mode) => clientCompletion.querySelector(`[data-client-mode="${mode}"]`);
     const setEditButtonDisabled = (disabled) => {
-        const editButton = modeButton('edit'); // il pulsante "Modifica Cliente" può non esistere nel markup
+        const editButton = modeButton('edit');
         if (editButton) editButton.disabled = disabled;
     };
 
@@ -800,7 +807,6 @@ const initializeFatturazione = () => {
             .then((response) => response.json())
             .then((data) => {
                 if (!data.success) throw new Error(data.message || 'Impossibile caricare gli ordini');
-                // Solo ordini confermati (le bozze non sono fatturabili)
                 const orders = (data.orders || []).filter((order) => !order.status || order.status === 'confirmed');
                 if (orders.length === 0) {
                     orderSelect.replaceChildren(new Option('Nessun ordine disponibile per questo cliente', ''));
@@ -919,7 +925,6 @@ const initializeFatturazione = () => {
             clientSelect.replaceChildren(new Option('Nessun cliente disponibile', ''));
         });
 
-    // Precompila causale, valuta e righe beni/servizi a partire dall'ordine scelto.
     const applyOrderToInvoice = (order) => {
         const causaleField = document.getElementById('causale');
         if (causaleField) causaleField.value = order.notes || '';
@@ -932,16 +937,13 @@ const initializeFatturazione = () => {
         const items = order.items || [];
         if (!beniForm || items.length === 0) return;
 
-        // Il regime non viene cambiato automaticamente: si avvisa solo se l'ordine ha IVA e il regime è forfettario.
         const hasVat = items.some((item) => parseInt(item.vat_rate, 10) > 0);
-        if (hasVat && regimeSelect && regimeSelect.value === 'regime forfettario' && invoiceSaveStatus) {
-            invoiceSaveStatus.textContent = 'Attenzione: l\'ordine contiene righe con IVA, ma il regime selezionato è forfettario. L\'IVA verrà azzerata nella fattura.';
+        if (hasVat && regimeSelect && regimeWithoutVat() && invoiceSaveStatus) {
+            invoiceSaveStatus.textContent = 'Attenzione: l\'ordine contiene righe con IVA, ma il regime fiscale del cedente non prevede l\'IVA. L\'IVA verrà azzerata nella fattura.';
         }
 
         const getRows = () => [...beniForm.querySelectorAll('[data-beni-row]')];
 
-        // Prima si crea il numero di righe necessario, poi si compilano in ordine.
-        // (La riga clonata viene inserita subito dopo la prima, quindi compilare mentre si aggiunge sfalserebbe l'ordine.)
         getRows().slice(1).forEach((row) => row.remove());
         const addButton = beniForm.querySelector('[data-add-beni]');
         for (let i = 1; i < items.length; i += 1) {
@@ -952,8 +954,6 @@ const initializeFatturazione = () => {
             const item = items[index];
             if (!item) return;
 
-            // Aliquota originale dell'ordine, ricordata anche se ora l'IVA è bloccata a 0 (forfettario):
-            // passando a "Regime Ordinario" verrà riapplicata.
             row.dataset.preferredRate = String(parseInt(item.vat_rate, 10) || 0);
 
             const descInput = row.querySelector('[name="descrizione[]"]');
@@ -961,7 +961,6 @@ const initializeFatturazione = () => {
             const priceInput = row.querySelector('[name="prezzo_unitario[]"]');
             const ivaSelect = row.querySelector('select[name="aliquota_iva[]"]');
 
-            // I DECIMAL del DB arrivano come "22.00", "1.00": vanno normalizzati.
             if (descInput) descInput.value = item.description || '';
             if (qtyInput) qtyInput.value = String(parseFloat(item.quantity) || 1);
             if (priceInput) priceInput.value = String(parseFloat(item.unit_price) || 0);
@@ -981,13 +980,11 @@ const initializeFatturazione = () => {
         });
     };
 
-    // Il profilo fiscale si compila nella modale del profilo (header): qui si reagisce al salvataggio.
     bindDocument('profile-saved', 'profile:saved', (event) => {
         if (!event.detail || !event.detail.fiscalComplete) return;
         window.__fiscalProfileComplete = true;
         const profileCompletion = document.getElementById('profile-completion');
         if (profileCompletion) profileCompletion.hidden = true;
-        // Mostra la scelta cliente solo se non si è già oltre (modulo di fatturazione non ancora aperto).
         if (billingForm && billingForm.hidden) clientCompletion.hidden = false;
     });
     bindDocument('profile-open', 'click', (event) => {
@@ -1109,7 +1106,6 @@ const initializeFatturazione = () => {
 
 document.addEventListener('DOMContentLoaded', initializeFatturazione);
 
-// L'init viene rilanciato a ogni cambio del DOM (pagina caricata via SPA), ma al massimo una volta per frame.
 let initScheduled = false;
 const contentObserver = new MutationObserver(() => {
     if (initScheduled) return;

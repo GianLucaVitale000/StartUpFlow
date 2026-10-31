@@ -12,6 +12,7 @@ function respond($status, $data) {
 
 try {
     require_once __DIR__ . '/../includes/auth.php';
+    require_once __DIR__ . '/../includes/profile-fiscal.php';
     require_once __DIR__ . '/../vendor/autoload.php';
 } catch (Throwable $exception) {
     respond(500, ['success' => false, 'message' => 'Errore di avvio del servizio: ' . $exception->getMessage()]);
@@ -52,10 +53,6 @@ use FatturaElettronicaPhp\FatturaElettronica\PaymentDetails;
 use FatturaElettronicaPhp\FatturaElettronica\PaymentInfo;
 use FatturaElettronicaPhp\FatturaElettronica\Supplier;
 use FatturaElettronicaPhp\FatturaElettronica\Total;
-
-// Regime forfettario: l'unica Natura ammessa è N2.2 (non soggette – altri casi).
-const FORFETTARIO_NATURE = 'N2.2';
-const FORFETTARIO_REFERENCE = "Operazione senza applicazione dell'IVA ai sensi dell'art. 1, commi 54-89, L. 190/2014";
 
 /**
  * Catalogo Natura IVA (assets/data/natura.json) indicizzato per codice.
@@ -100,8 +97,6 @@ if (strlen($sdiCode) === 6 || strtolower((string) ($_POST['invoice_format'] ?? '
 }
 
 $documentNumber = trim((string) ($_POST['document_number'] ?? ''));
-$issueDate = (string) ($_POST['issue_date'] ?? '');
-$dueDate = (string) ($_POST['due_date'] ?? '');
 $causale = trim((string) ($_POST['causale'] ?? ''));
 $currency = strtoupper(trim((string) ($_POST['divisa'] ?? 'EUR')));
 if ($currency === '') {
@@ -111,18 +106,40 @@ if ($currency === '') {
 $invoiceTypeInput = strtolower(trim((string) ($_POST['invoice_type'] ?? 'ordinaria')));
 $isSimplified = ($invoiceTypeInput === 'semplificata');
 
-// Tax regime mapping
-$taxRegimeCode = strtoupper((string) ($supplierProfile['tax_regime'] ?? 'RF01'));
-$taxRegimeMap = [
-    'RF19' => 'forfettario',
-    'RF01' => 'ordinario',
-    'REGIME FORFETTARIO' => 'forfettario',
-    'REGIME ORDINARIO' => 'ordinario',
-    'FORFETTARIO' => 'forfettario',
-    'ORDINARIO' => 'ordinario',
-];
-$taxRegime = $taxRegimeMap[$taxRegimeCode] ?? 'ordinario';
-$enumTaxRegime = ($taxRegime === 'forfettario') ? TaxRegime::RF19() : TaxRegime::RF01();
+// Normalizzazione e salvaguardia del formato date (gg-mm-aaaa o yyyy-mm-dd)
+function normalizeDate(string $date): string {
+    $date = trim($date);
+    if ($date === '') {
+        return '';
+    }
+    if (preg_match('/^(\d{2})-(\d{2})-(\d{4})$/', $date, $m)) {
+        return $m[3] . '-' . $m[2] . '-' . $m[1];
+    }
+    if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $date, $m)) {
+        return $m[3] . '-' . $m[2] . '-' . $m[1];
+    }
+    return $date;
+}
+
+$issueDateRaw = (string) ($_POST['issue_date'] ?? '');
+$dueDateRaw = (string) ($_POST['due_date'] ?? '');
+$issueDate = normalizeDate($issueDateRaw);
+$dueDate = normalizeDate($dueDateRaw);
+
+// Regime fiscale del cedente: catalogo regimi-fiscali.json. Nessun valore di ripiego: un regime assente,
+// sconosciuto o non gestito blocca l'emissione invece di essere trattato in silenzio come ordinario.
+$taxRegimeCode = strtoupper(trim((string) ($supplierProfile['tax_regime'] ?? '')));
+$regimeInfo = fiscalRegime($taxRegimeCode);
+if ($regimeInfo === null) {
+    respond(422, ['success' => false, 'message' => 'Regime fiscale del cedente mancante o non valido. Selezionalo nel profilo.']);
+}
+if (!$regimeInfo['supported']) {
+    respond(422, ['success' => false, 'message' => 'Il regime fiscale ' . $taxRegimeCode . ' non è ancora gestito per l\'emissione delle fatture.']);
+}
+$appliesVat = $regimeInfo['applies_vat'];              // false: aliquota sempre 0
+$fixedNature = $regimeInfo['fixed_nature'];            // Natura imposta quando l'IVA non si applica
+$defaultReference = $regimeInfo['default_reference'];  // dicitura di legge predefinita
+$enumTaxRegime = new TaxRegime($taxRegimeCode);
 
 $bolloToClient = (int) ($_POST['bollo_to_client'] ?? 0);
 $bolloAmount = 0.0;
@@ -212,7 +229,7 @@ if ($lineCount === 0) {
 
 try {
     $natureCatalog = loadNatureCatalog();
-    $allowedRates = $taxRegime === 'forfettario' ? [0] : [0, 4, 5, 10, 22];
+    $allowedRates = $appliesVat ? [0, 4, 5, 10, 22] : [0];
 
     $lineItems = [];
     $invoiceTotal = 0.0;
@@ -239,18 +256,18 @@ try {
             respond(422, ['success' => false, 'message' => 'Il riferimento normativo non può superare i 100 caratteri']);
         }
         if (!in_array($rate, $allowedRates, true)) {
-            respond(422, ['success' => false, 'message' => $taxRegime === 'forfettario'
-                ? 'Nel regime forfettario l\'aliquota IVA deve essere 0%'
+            respond(422, ['success' => false, 'message' => !$appliesVat
+                ? 'Nel regime ' . $taxRegimeCode . ' l\'aliquota IVA deve essere 0%'
                 : 'Aliquota IVA non valida']);
         }
 
         // Natura: obbligatoria con aliquota 0, da omettere con aliquota > 0 (altrimenti lo SdI scarta il file).
         if ($rate > 0) {
             $nature = null;
-        } elseif ($taxRegime === 'forfettario') {
-            $nature = FORFETTARIO_NATURE;
-            if ($legalReference === '') {
-                $legalReference = FORFETTARIO_REFERENCE;
+        } elseif (!$appliesVat) {
+            $nature = $fixedNature;
+            if ($legalReference === '' && $defaultReference !== null) {
+                $legalReference = $defaultReference;
             }
         } elseif (isset($natureCatalog[$nature])) {
             // codice valido scelto dall'utente
@@ -282,16 +299,18 @@ try {
         ];
     }
 
-    // Cassa: in forfettario niente IVA né ritenuta; con aliquota 0 serve la Natura (i campi disabilitati non arrivano nel POST).
+    // Cassa: le regole dipendono dal regime; con aliquota 0 serve la Natura (i campi disabilitati non arrivano nel POST).
     if ($cassaTipo !== '') {
-        if ($taxRegime === 'forfettario') {
+        if (!$appliesVat) {
             $cassaAliquotaIva = 0;
+        }
+        if (!$regimeInfo['withholding']) {
             $cassaRitenuta = 0;
         }
         if ($cassaAliquotaIva > 0) {
             $cassaNatura = '';
-        } elseif ($taxRegime === 'forfettario') {
-            $cassaNatura = FORFETTARIO_NATURE;
+        } elseif (!$appliesVat) {
+            $cassaNatura = $fixedNature;
         } elseif (!isset($natureCatalog[$cassaNatura])) {
             respond(422, ['success' => false, 'message' => 'Seleziona una Natura IVA valida per il contributo cassa con aliquota 0%']);
         }
@@ -300,21 +319,26 @@ try {
     // Calcolo cassa previdenziale
     $cassaCalculatedAmount = 0.0;
     $cassaCalculatedTax = 0.0;
-    if ($cassaTipo !== '' && $cassaImponibile > 0 && $cassaAliquota > 0) {
-        $cassaCalculatedAmount = round($cassaImponibile * $cassaAliquota / 100, 2);
-        if ($cassaAliquotaIva > 0 && $cassaCalculatedAmount > 0) {
-            $cassaCalculatedTax = round($cassaCalculatedAmount * $cassaAliquotaIva / 100, 2);
+    if ($cassaTipo !== '') {
+        if ($cassaImponibile <= 0) {
+            $cassaImponibile = round($taxableSum + $expensesSum, 2);
         }
-        if ($cassaImporto <= 0) {
-            $cassaImporto = $cassaCalculatedAmount;
-        }
-        if ($cassaImposta <= 0) {
-            $cassaImposta = $cassaCalculatedTax;
+        if ($cassaImponibile > 0 && $cassaAliquota > 0) {
+            $cassaCalculatedAmount = round($cassaImponibile * $cassaAliquota / 100, 2);
+            if ($cassaAliquotaIva > 0 && $cassaCalculatedAmount > 0) {
+                $cassaCalculatedTax = round($cassaCalculatedAmount * $cassaAliquotaIva / 100, 2);
+            }
+            if ($cassaImporto <= 0) {
+                $cassaImporto = $cassaCalculatedAmount;
+            }
+            if ($cassaImposta <= 0) {
+                $cassaImposta = $cassaCalculatedTax;
+            }
         }
     }
 
     // Bollo
-    $bolloRequired = ($taxRegime === 'forfettario' && ($taxableSum + $cassaImporto) > 77.47);
+    $bolloRequired = (!$appliesVat && ($taxableSum + $expensesSum + $cassaImporto) > 77.47);
     if ($bolloRequired) {
         if ($bolloToClient) {
             $bolloAmount = 2.00;
@@ -506,8 +530,8 @@ try {
                 $total->setVatNature($group['nature']);
             }
             $reference = $group['reference'];
-            if ($reference === '' && $taxRegime === 'forfettario') {
-                $reference = FORFETTARIO_REFERENCE;
+            if ($reference === '' && !$appliesVat && $defaultReference !== null) {
+                $reference = $defaultReference;
             }
             if ($reference !== '') {
                 $total->setReference($reference);
@@ -589,7 +613,7 @@ try {
         ':issue_date' => $issueDate,
         ':due_date' => $dueDate,
         ':currency' => $currency,
-        ':tax_regime' => $taxRegime,
+        ':tax_regime' => $taxRegimeCode,
         ':total' => number_format($invoiceTotal, 2, '.', ''),
         ':bollo' => number_format($bolloAmount, 2, '.', ''),
         ':bollo_to_client' => $bolloToClient ? 1 : 0,

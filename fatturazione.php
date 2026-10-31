@@ -185,6 +185,7 @@ $username = $_SESSION['username'] ?? 'Utente';
                 <?php echo csrfInput(); ?>
                 <?php
                 $taxRegimeCode = strtoupper((string) ($fiscalRow['tax_regime'] ?? ''));
+                $regimeInfo = fiscalRegime($taxRegimeCode);
                 $taxRegimeLabel = isset(TAX_REGIMES_SUPPORTED[$taxRegimeCode]) ? TAX_REGIMES_SUPPORTED[$taxRegimeCode] : null;
                 $hasRegime = $taxRegimeCode !== '' && $taxRegimeLabel !== null;
                 ?>
@@ -192,12 +193,16 @@ $username = $_SESSION['username'] ?? 'Utente';
                     <label>Regime Fiscale (da anagrafica):</label>
                     <?php if ($hasRegime): ?>
                         <span id="regime-fiscale-display"><?php echo $escape($taxRegimeLabel); ?></span>
-                        <input type="hidden" id="regime-fiscale" name="tax_regime" value="<?php echo $escape($taxRegimeCode); ?>">
+                        <input type="hidden" id="regime-fiscale" name="tax_regime" value="<?php echo $escape($taxRegimeCode); ?>"
+                               data-applies-vat="<?php echo $regimeInfo['applies_vat'] ? '1' : '0'; ?>"
+                               data-fixed-nature="<?php echo $escape($regimeInfo['fixed_nature']); ?>"
+                               data-default-reference="<?php echo $escape($regimeInfo['default_reference']); ?>"
+                               data-withholding="<?php echo $regimeInfo['withholding'] ? '1' : '0'; ?>">
                     <?php else: ?>
                         <span id="regime-fiscale-display" style="color: #dc2626; font-weight: bold;">Regime fiscale non specificato in anagrafica</span>
                         <input type="hidden" id="regime-fiscale" name="tax_regime" value="">
                         <div style="margin: 0.5rem 0; padding: 0.75rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; color: #991b1b; font-size: 0.9rem;">
-                            <strong>Attenzione:</strong> non hai specificato il regime fiscale in anagrafica. Vai nel profilo utente (anagrafica) per selezionare RF01 (ordinario) o RF19 (forfettario) prima di emettere fatture.
+                            <strong>Attenzione:</strong> non hai specificato il regime fiscale in anagrafica. Vai nel profilo utente (anagrafica) per selezionare un regime fiscale valido prima di emettere fatture.
                         </div>
                     <?php endif; ?>
                     <label for="data-documento">Data Documento:</label>
@@ -258,7 +263,7 @@ $username = $_SESSION['username'] ?? 'Utente';
                                 <input type="number" name="imponibile[]" step="0.01" data-summary-taxable readonly>
                                 <label data-summary-label="tax">Imposta</label>
                                 <input type="number" name="imposta[]" step="0.01" data-summary-tax readonly>
-                                <label data-summary-label="expenses">Spese accessorie</label>
+                                <label data-summary-label="expenses">Spese accessorie imponibili</label>
                                 <input type="number" name="spese_accessorie[]" step="0.01" min="0" value="0.00">
                                 <label data-summary-label="reference">Riferimento normativo</label>
                                 <input type="text" name="riferimento_normativo[]" maxlength="100" placeholder="Inserisci riferimento normativo">
@@ -311,21 +316,6 @@ $username = $_SESSION['username'] ?? 'Utente';
                 <button type="submit" class="profile-modal__save" id="save-invoice-button">Salva fattura</button>
                 <p id="invoice-save-status" role="status" aria-live="polite"></p>
             </form>
-
-            <!-- <div class="checklist" id="billing-checklist">
-                <label class="checklist-item" for="beni">
-                    <input type="checkbox" id="beni" name="extras" value="beni" checked disabled>
-                    <span>Beni e servizi</span>
-                </label>
-                <label class="checklist-item" for="riepilogo">
-                    <input type="checkbox" id="riepilogo" name="extras" value="riepilogo" checked disabled>
-                    <span>Riepilogo importi per aliquota</span>
-                </label>
-                <label class="checklist-item" for="causale-checklist">
-                    <input type="checkbox" id="causale-checklist" name="extras" value="causale" checked disabled>
-                    <span>Causale</span>
-                </label>
-            </div> -->
         </div>
-        </div>
+    </div>
 </div>
