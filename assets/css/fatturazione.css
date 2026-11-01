@@ -412,6 +412,31 @@ body.dashboard-page {
 	gap: 16px;
 }
 
+.dati-fattura__field {
+	display: grid;
+	align-content: start;
+	gap: 8px;
+}
+
+.dati-fattura__field > label {
+	display: block;
+}
+
+.dati-fattura__field > #invoice-type-status,
+.dati-fattura__field > #regime-fiscale-display {
+	min-height: 48px;
+	padding: 13px 14px;
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+}
+
+.dati-fattura__field > #regime-fiscale-display {
+	background: #f8fafc;
+	border: 1px solid rgba(17, 17, 17, 0.12);
+	border-radius: 6px;
+}
+
 .dati-fattura__bollo {
 	grid-column: 1 / -1;
 	display: flex;

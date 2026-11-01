@@ -37,6 +37,16 @@ try {
         exit('Fattura non trovata');
     }
 
+    $receivedAmount = 0.0;
+    if (!empty($invoice['order_id'])) {
+        $paymentStmt = $pdo->prepare(
+            'SELECT COALESCE(SUM(amount), 0) FROM payments
+             WHERE order_id = :order_id'
+        );
+        $paymentStmt->execute([':order_id' => (int) $invoice['order_id']]);
+        $receivedAmount = (float) $paymentStmt->fetchColumn();
+    }
+
     // Caricamento profilo utente (Cedente)
     $supplierStmt = $pdo->prepare('SELECT * FROM users_profiles WHERE user_id = :user_id LIMIT 1');
     $supplierStmt->execute([':user_id' => $userId]);
@@ -63,10 +73,47 @@ try {
         $causale = '';
         $cassaAmount = 0.0;
         $expensesAmount = 0.0;
+        $nonTaxableExpensesAmount = 0.0;
         $virtualDuty = '';
         $vatNotes = [];
         $subtotal = 0.0;
+        $isSimplified = false;
+        $paymentTerms = '';
+        $paymentMethod = '';
+        $paymentAmount = null;
+        $paymentStatusLabel = '';
+        $paymentMethodLabels = [];
+        $paymentCatalog = json_decode((string) @file_get_contents(__DIR__ . '/../assets/data/modalita-pagamento.json'), true);
+        if (is_array($paymentCatalog)) {
+            foreach ($paymentCatalog as $paymentEntry) {
+                if (isset($paymentEntry['value'], $paymentEntry['name'])) {
+                    $paymentMethodLabels[(string) $paymentEntry['value']] = (string) $paymentEntry['name'];
+                }
+            }
+        }
         if (is_file($xmlPath)) {
+            $documentXml = new DOMDocument();
+            if (@$documentXml->load($xmlPath, LIBXML_NONET | LIBXML_NOBLANKS)) {
+                $documentTypeNode = $documentXml->getElementsByTagName('TipoDocumento')->item(0);
+                $isSimplified = $documentTypeNode instanceof DOMElement
+                    && trim($documentTypeNode->textContent) === 'TD07';
+                $paymentInfoNode = $documentXml->getElementsByTagName('DatiPagamento')->item(0);
+                if ($paymentInfoNode instanceof DOMElement) {
+                    $termsNode = $paymentInfoNode->getElementsByTagName('CondizioniPagamento')->item(0);
+                    $methodNode = $paymentInfoNode->getElementsByTagName('ModalitaPagamento')->item(0);
+                    $amountNode = $paymentInfoNode->getElementsByTagName('ImportoPagamento')->item(0);
+                    $paymentTerms = $termsNode instanceof DOMElement ? trim($termsNode->textContent) : '';
+                    $paymentMethod = $methodNode instanceof DOMElement ? trim($methodNode->textContent) : '';
+                    $paymentAmount = max(0, (float) $invoice['total'] - $receivedAmount);
+                    if ($paymentAmount <= 0 || !empty($invoice['is_paid'])) {
+                        $paymentStatusLabel = 'Pagamento effettuato';
+                    } elseif ($receivedAmount > 0) {
+                        $paymentStatusLabel = 'Pagamento parziale';
+                    } else {
+                        $paymentStatusLabel = 'Pagamento da effettuare';
+                    }
+                }
+            }
             try {
                 $eDoc = DigitalDocument::parseFrom($xmlPath);
                 $instances = $eDoc->getDocumentInstances();
@@ -78,12 +125,18 @@ try {
                     $virtualDuty = $instance->getVirtualDuty();
 
                     foreach ($instance->getTotals() as $summaryTotal) {
+                        $nature = $summaryTotal->getVatNature();
+                        $natureCode = $nature !== null ? (string) $nature : '';
                         if (method_exists($summaryTotal, 'getOtherExpenses') && $summaryTotal->getOtherExpenses() !== null) {
-                            $expensesAmount += (float) $summaryTotal->getOtherExpenses();
+                            if ($natureCode === 'N1') {
+                                $nonTaxableExpensesAmount += (float) $summaryTotal->getOtherExpenses();
+                            } else {
+                                $expensesAmount += (float) $summaryTotal->getOtherExpenses();
+                            }
                         }
-                        if ($summaryTotal->getVatNature() !== null) {
+                        if ($nature !== null) {
                             $vatNotes[] = [
-                                'nature' => (string) $summaryTotal->getVatNature(),
+                                'nature' => $natureCode,
                                 'reference' => (string) ($summaryTotal->getReference() ?? ''),
                             ];
                         }
@@ -94,9 +147,16 @@ try {
                         $cassaAmount = (float) $funds[0]->getAmount();
                     }
 
-                    if ($eDoc->isSimplified()) {
+                    if ($isSimplified) {
                         foreach ($instance->getSimplifiedLines() as $line) {
                             $lineTaxable = (float)$line->getTotal();
+                            $lineNature = method_exists($line, 'getVatNature') && $line->getVatNature() !== null
+                                ? (string) $line->getVatNature()
+                                : '';
+                            if ($lineNature === 'N1') {
+                                $nonTaxableExpensesAmount += $lineTaxable;
+                                continue;
+                            }
                             $subtotal += $lineTaxable;
                             $items[] = [
                                 'Description' => $line->getDescription(),
@@ -135,7 +195,15 @@ try {
                     }
                     foreach ($xml->getElementsByTagName('SpeseAccessorie') as $speseNode) {
                         if ($speseNode instanceof DOMElement) {
-                            $expensesAmount += (float) $speseNode->textContent;
+                            $summaryNode = $speseNode->parentNode;
+                            $natureNode = $summaryNode instanceof DOMElement
+                                ? $summaryNode->getElementsByTagName('Natura')->item(0)
+                                : null;
+                            if ($natureNode instanceof DOMElement && $natureNode->textContent === 'N1') {
+                                $nonTaxableExpensesAmount += (float) $speseNode->textContent;
+                            } else {
+                                $expensesAmount += (float) $speseNode->textContent;
+                            }
                         }
                     }
                     $itemFields = ['Description', 'Quantity', 'UnitPrice', 'VatRate', 'Nature', 'TaxableAmount', 'TaxAmount', 'AdditionalExpenses', 'LegalReference', 'LineTotal'];
@@ -183,19 +251,28 @@ try {
             <meta charset="UTF-8">
             <title>Fattura <?php echo htmlspecialchars($documentNumber, ENT_QUOTES, 'UTF-8'); ?></title>
             <style>
-                body { font-family: system-ui, -apple-system, sans-serif; color: #111; line-height: 1.5; margin: 2rem; }
-                h1, h2, h3 { margin: 0 0 0.5rem; }
-                .header { display: flex; justify-content: space-between; margin-bottom: 2rem; border-bottom: 2px solid #eee; padding-bottom: 1rem; }
-                .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem; border-bottom: 2px solid #eee; padding-bottom: 1.5rem; }
-                table { width: 100%; border-collapse: collapse; margin-bottom: 2rem; }
-                th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #ddd; font-size: 0.95rem; }
+                @page { size: A4; margin: 12mm; }
+                body { font-family: system-ui, -apple-system, sans-serif; color: #111; line-height: 1.35; margin: 1rem; font-size: 0.88rem; }
+                h1, h2, h3 { margin: 0 0 0.35rem; }
+                .header { display: flex; justify-content: space-between; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.6rem; }
+                .header p { margin: 0.2rem 0; font-size: 0.78rem; }
+                .parties { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1rem; border-bottom: 2px solid #eee; padding-bottom: 0.8rem; page-break-inside: avoid; }
+                .parties h3 { font-size: 0.82rem; }
+                .parties p { margin: 0; font-size: 0.74rem; line-height: 1.25; }
+                .causale { margin-bottom: 0.8rem; page-break-inside: avoid; }
+                .causale h3 { font-size: 0.82rem; }
+                .causale p { margin: 0; font-size: 0.74rem; line-height: 1.25; white-space: normal; }
+                table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; page-break-inside: auto; }
+                tr { page-break-inside: avoid; }
+                th, td { padding: 0.42rem 0.5rem; text-align: left; border-bottom: 1px solid #ddd; font-size: 0.78rem; }
                 th { background: #f8f9fa; font-weight: 600; }
-                .totals { margin-left: auto; width: 300px; }
-                .totals div { display: flex; justify-content: space-between; padding: 0.4rem 0; border-bottom: 1px solid #eee; }
-                .totals div.total { font-weight: bold; font-size: 1.1rem; border-top: 2px solid #333; border-bottom: none; margin-top: 0.5rem; padding-top: 0.5rem; }
-                .print-bar { background: #111; color: #fff; padding: 1rem; text-align: center; margin-bottom: 2rem; border-radius: 8px; }
-                .print-bar button { background: #fff; color: #111; border: none; padding: 0.5rem 1rem; font-weight: bold; cursor: pointer; border-radius: 4px; }
-                @media print { .print-bar { display: none; } body { margin: 0; } }
+                .totals { margin-left: auto; width: 280px; page-break-inside: avoid; }
+                .totals div { display: flex; justify-content: space-between; padding: 0.25rem 0; border-bottom: 1px solid #eee; font-size: 0.8rem; }
+                .totals div.total { font-weight: bold; font-size: 0.95rem; border-top: 2px solid #333; border-bottom: none; margin-top: 0.35rem; padding-top: 0.35rem; }
+                .print-bar { background: #111; color: #fff; padding: 0.7rem; text-align: center; margin-bottom: 1rem; border-radius: 8px; }
+                .print-bar button { background: #fff; color: #111; border: none; padding: 0.4rem 0.8rem; font-weight: bold; cursor: pointer; border-radius: 4px; }
+                .document-type { display: inline-block; margin-left: 0.75rem; padding: 0.2rem 0.6rem; border: 1px solid #333; border-radius: 999px; font-size: 0.75rem; text-transform: uppercase; }
+                @media print { .print-bar { display: none; } body { margin: 0; font-size: 0.82rem; } }
             </style>
         </head>
         <body>
@@ -206,12 +283,29 @@ try {
 
             <div class="header">
                 <div>
-                    <h1>Fattura</h1>
+                    <h1>Fattura <?php echo $isSimplified ? 'semplificata' : 'ordinaria'; ?>
+                        <span class="document-type"><?php echo $isSimplified ? 'TD07' : 'TD01'; ?></span>
+                    </h1>
                     <div style="display: flex; flex-direction: row; gap: 1rem;">
                         <p><strong>N. Documento:</strong> <?php echo htmlspecialchars($documentNumber, ENT_QUOTES, 'UTF-8'); ?></p>
                         <p><strong>Data:</strong> <?php echo htmlspecialchars(!empty($invoice['issue_date']) ? date('d-m-Y', strtotime($invoice['issue_date'])) : '', ENT_QUOTES, 'UTF-8'); ?></p>
                         <p><strong>Termine di Pagamento:</strong> <?php echo htmlspecialchars(!empty($invoice['due_date']) ? date('d-m-Y', strtotime($invoice['due_date'])) : '', ENT_QUOTES, 'UTF-8'); ?></p>
                     </div>
+                    <?php if ($paymentMethod !== '' || $paymentTerms !== ''): ?>
+                        <p style="font-size: 0.74rem; margin: 0.2rem 0;">
+                            <strong>Pagamento:</strong>
+                            <?php echo htmlspecialchars([
+                                'TP01' => 'TP01 - a rate',
+                                'TP02' => 'TP02 - completo',
+                                'TP03' => 'TP03 - anticipato',
+                            ][$paymentTerms] ?? $paymentTerms, ENT_QUOTES, 'UTF-8'); ?>
+                            · modalità: <?php echo htmlspecialchars($paymentMethodLabels[$paymentMethod] ?? $paymentMethod, ENT_QUOTES, 'UTF-8'); ?>
+                            <?php if ($paymentAmount !== null): ?>
+                                · Residuo: <?php echo number_format($paymentAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?>
+                            <?php endif; ?>
+                            · Status: <?php echo htmlspecialchars($paymentStatusLabel, ENT_QUOTES, 'UTF-8'); ?>
+                        </p>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -241,7 +335,7 @@ try {
             </div>
 
             <?php if (!empty($causale)): ?>
-                <div style="margin-bottom: 2rem;">
+                <div class="causale">
                     <h3>Causale</h3>
                     <p><?php echo nl2br(htmlspecialchars($causale, ENT_QUOTES, 'UTF-8')); ?></p>
                 </div>
@@ -297,8 +391,14 @@ try {
                 </div>
                 <?php if ($expensesAmount > 0): ?>
                     <div>
-                        <span>Spese accessorie imp.:</span>
+                        <span>Spese accessorie imponibili:</span>
                         <span><?php echo number_format($expensesAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
+                    </div>
+                <?php endif; ?>
+                <?php if ($nonTaxableExpensesAmount > 0): ?>
+                    <div>
+                        <span>Spese escluse ex art. 15:</span>
+                        <span><?php echo number_format($nonTaxableExpensesAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
                     </div>
                 <?php endif; ?>
                 <?php if ($cassaAmount > 0): ?>

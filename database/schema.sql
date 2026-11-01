@@ -221,33 +221,6 @@ CREATE TABLE IF NOT EXISTS invoice_counters (
 ) ENGINE=InnoDB;
 
 
-CREATE TABLE IF NOT EXISTS invoices (
-    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    client_id INT UNSIGNED NOT NULL,
-    user_id INT UNSIGNED NOT NULL,
-    document_number VARCHAR(50) NOT NULL,
-    issue_date DATE NOT NULL,
-    due_date DATE NOT NULL,
-    currency VARCHAR(3) NOT NULL DEFAULT 'EUR',
-    tax_regime VARCHAR(16) NOT NULL,                      -- RegimeFiscale FatturaPA (RF01, RF19...), validato da assets/data/regimi-fiscali.json
-    total DECIMAL(10,2) NOT NULL DEFAULT 0.00,          
-    bollo DECIMAL(10,2) NOT NULL DEFAULT 0.00,            -- ImportoBollo (IVA esclusa)
-    bollo_to_client TINYINT(1) NOT NULL DEFAULT 0,        -- True se la marca da bollo è addebitata al cliente (BolloVirtuale = SI)
-    cassa_type CHAR(4) NULL,                              -- TipoCassa FatturaPA (TC01...TC22), NULL = nessuna cassa
-    cassa_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,     -- ImportoContributoCassa (IVA sul contributo esclusa)
-    is_paid BOOLEAN NOT NULL DEFAULT FALSE,               -- True se la fattura è stata saldata (pagamenti >= total + bollo + cassa_amount)
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_invoices_document_number (document_number),
-    CONSTRAINT fk_invoices_client
-        FOREIGN KEY (client_id)
-        REFERENCES clients(id),
-    CONSTRAINT fk_invoices_user
-        FOREIGN KEY (user_id)
-        REFERENCES users(id)
-) ENGINE=InnoDB;
-
 -- Persone di riferimento di un cliente/azienda
 CREATE TABLE IF NOT EXISTS client_contacts (
   id INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -370,6 +343,39 @@ CREATE TABLE IF NOT EXISTS payments (
   KEY idx_payments_order (order_id),
   CONSTRAINT fk_payments_order
     FOREIGN KEY (order_id) REFERENCES orders (id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS invoices (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    client_id INT UNSIGNED NOT NULL,
+    order_id INT UNSIGNED NULL,
+    user_id INT UNSIGNED NOT NULL,
+    document_number VARCHAR(50) NOT NULL,
+    issue_date DATE NOT NULL,
+    due_date DATE NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'EUR',
+    tax_regime VARCHAR(16) NOT NULL,                      -- RegimeFiscale FatturaPA (RF01, RF19...), validato da assets/data/regimi-fiscali.json
+    total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+    bollo DECIMAL(10,2) NOT NULL DEFAULT 0.00,            -- ImportoBollo (IVA esclusa)
+    bollo_to_client TINYINT(1) NOT NULL DEFAULT 0,        -- True se la marca da bollo è addebitata al cliente (BolloVirtuale = SI)
+    cassa_type CHAR(4) NULL,                              -- TipoCassa FatturaPA (TC01...TC22), NULL = nessuna cassa
+    cassa_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,     -- ImportoContributoCassa (IVA sul contributo esclusa)
+    is_paid BOOLEAN NOT NULL DEFAULT FALSE,               -- True se la fattura è stata saldata (pagamenti >= total + bollo + cassa_amount)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_invoices_document_number (document_number),
+    KEY idx_invoices_order (order_id),
+    CONSTRAINT fk_invoices_client
+        FOREIGN KEY (client_id)
+        REFERENCES clients(id),
+    CONSTRAINT fk_invoices_order
+        FOREIGN KEY (order_id)
+        REFERENCES orders(id)
+        ON DELETE SET NULL,
+    CONSTRAINT fk_invoices_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(id)
 ) ENGINE=InnoDB;
 
 -- =====================================================================

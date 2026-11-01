@@ -168,7 +168,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Gestione dei click sui link SPA
     document.addEventListener('click', (e) => {
-        const link = e.target.closest('a[data-spa="true"]');
+        const target = e.target instanceof Element ? e.target : null;
+        if (!target) return;
+        const link = target.closest('a[data-spa="true"]');
         if (!link) return;
 
         e.preventDefault();
@@ -182,8 +184,51 @@ document.addEventListener('DOMContentLoaded', () => {
         const action = form.getAttribute('action');
         if (!action) return;
         if (action.includes('process-logout') || action.startsWith('/auth/')) return;
+        if (form.matches('#invoice-form')) return;
 
         e.preventDefault();
+
+        if (form.matches('[data-payment-form]')) {
+            e.stopPropagation();
+            const submitButton = form.querySelector('button[type="submit"]');
+            const status = form.querySelector('[data-payment-status]');
+            if (submitButton) submitButton.disabled = true;
+            if (status) status.textContent = 'Salvataggio pagamento...';
+
+            try {
+                const response = await fetch(action, {
+                    method: 'POST',
+                    body: new FormData(form),
+                    credentials: 'include',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                if (!response.ok) {
+                    const body = await response.text();
+                    let message = `Errore nella richiesta: ${response.status}`;
+                    try {
+                        const json = JSON.parse(body);
+                        message = json.message || message;
+                    } catch {
+                        const match = body.match(/<p>([\s\S]*?)<\/p>/);
+                        if (match) message = match[1].replace(/<[^>]+>/g, '').trim() || message;
+                    }
+                    throw new Error(message);
+                }
+
+                const result = await response.json();
+                if (!result.success) throw new Error(result.message || 'Pagamento non registrato');
+                if (status) status.textContent = result.message || 'Pagamento registrato.';
+                const modal = form.closest('dialog');
+                if (modal?.open) modal.close();
+                const clientId = new FormData(form).get('client_id');
+                loadPage(`/crm-clienti?action=show&id=${encodeURIComponent(clientId)}`);
+                return;
+            } catch (error) {
+                if (status) status.textContent = error.message || 'Errore durante il salvataggio del pagamento';
+                if (submitButton) submitButton.disabled = false;
+                return;
+            }
+        }
 
         try {
             dynamicContent.innerHTML = '<div class="loading-spinner">Caricamento...</div>';

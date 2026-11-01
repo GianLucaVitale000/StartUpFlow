@@ -147,6 +147,13 @@ Breadcrumb
     background-color: #7f8c8d;
 }
 
+.btn-payment {
+    padding: 0.3rem 0.55rem;
+    font-size: 0.78rem;
+    margin-right: 0;
+    margin-bottom: 0.25rem;
+}
+
 /* ===========
     Tables 
 ============== */
@@ -446,11 +453,17 @@ CRM Legend & Popup Modal
 Modale Nuovo Ordine e scroll ordini dopo 2 elementi
 =================================================== */
 dialog.profile-modal {
+    background:#ffffff;
     margin: 0;
+    padding: 1rem;
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
+}
+
+dialog.profile-modal .profile-modal__panel {
+    background: #ffffff;
 }
 
 .orders-table-container {

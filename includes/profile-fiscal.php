@@ -159,7 +159,9 @@ function fiscalIsValidVat(string $vat): bool
     $sum = 0;
     for ($i = 0; $i < 10; $i++) {
         $digit = (int) $vat[$i];
-        if ($i % 2 === 1) {
+        // Per le prime 10 cifre della P.IVA italiana si raddoppiano le
+        // posizioni pari contando da sinistra (indici 0, 2, 4, ...).
+        if ($i % 2 === 0) {
             $digit *= 2;
             if ($digit > 9) {
                 $digit -= 9;

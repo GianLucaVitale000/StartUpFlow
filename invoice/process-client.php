@@ -31,7 +31,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 			echo json_encode(['success' => false, 'message' => 'Cliente non valido']);
 			exit;
 		}
-		$stmt = $pdo->prepare('SELECT id, order_number, total, currency, notes, status, created_at FROM orders WHERE client_id = ? AND user_id = ? ORDER BY created_at DESC');
+		$stmt = $pdo->prepare(
+			'SELECT o.id, o.order_number, o.total, o.currency, o.notes, o.status, o.payment_status,
+			        COALESCE((SELECT SUM(oi.quantity * oi.unit_price) FROM order_items oi WHERE oi.order_id = o.id), 0) AS total_without_vat,
+			        o.paid_at, o.created_at,
+			        COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.order_id = o.id), 0) AS paid_amount,
+			        (SELECT p.method FROM payments p WHERE p.order_id = o.id ORDER BY p.received_at DESC, p.id DESC LIMIT 1) AS last_payment_method,
+			        (SELECT p.reference FROM payments p WHERE p.order_id = o.id ORDER BY p.received_at DESC, p.id DESC LIMIT 1) AS last_payment_reference,
+			        (SELECT p.received_at FROM payments p WHERE p.order_id = o.id ORDER BY p.received_at DESC, p.id DESC LIMIT 1) AS last_payment_date
+			 FROM orders o
+			 WHERE o.client_id = ? AND o.user_id = ?
+			 ORDER BY o.created_at DESC'
+		);
 		$stmt->execute([$clientId, $userId]);
 		$orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 		if ($orders) {
@@ -173,4 +184,3 @@ try {
 	http_response_code(500);
 	echo json_encode(['success' => false, 'message' => 'Impossibile salvare il cliente']);
 }
-

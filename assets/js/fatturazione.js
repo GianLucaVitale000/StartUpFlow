@@ -9,6 +9,8 @@ const bindDocument = (key, eventName, handler) => {
     document.addEventListener(eventName, handler);
 };
 
+let paymentMethodsPromise;
+
 const initializeFatturazione = () => {
     const countrySelect = document.querySelector('[data-fatturazione-countries-select]');
     const currencySelect = document.querySelector('[data-fatturazione-currency-select]');
@@ -33,12 +35,64 @@ const initializeFatturazione = () => {
     const invoiceForm = document.getElementById('invoice-form');
     const saveInvoiceButton = document.getElementById('save-invoice-button');
     const invoiceSaveStatus = document.getElementById('invoice-save-status');
+    const orderIdInput = document.getElementById('order-id');
+    const paymentStatus = document.getElementById('stato-pagamento');
+    const paymentTerms = document.getElementById('condizioni-pagamento');
+    const paymentMethod = document.getElementById('modalita-pagamento');
+    const paymentAmount = document.getElementById('importo-pagamento');
+    const paymentReference = document.getElementById('riferimento-pagamento');
+    const paymentReceived = document.getElementById('pagamento-effettuato');
+    const paymentReceivedDetail = document.getElementById('pagamento-effettuato-dettaglio');
+    let paymentAmountManual = false;
     const invoiceActions = document.querySelector('.invoice-actions');
     const invoiceCreateWorkflow = document.getElementById('invoice-create-workflow');
     const invoiceListView = document.getElementById('invoice-list-view');
     const invoiceList = document.getElementById('invoice-list');
     const invoiceListStatus = document.getElementById('invoice-list-status');
     let invoiceNumberRequest = 0;
+
+    const loadPaymentMethods = () => {
+        if (!paymentMethod) return;
+        if (paymentMethod.dataset.paymentMethodsState) return;
+        paymentMethod.dataset.paymentMethodsState = 'loading';
+        paymentMethodsPromise ??= fetch('/assets/data/modalita-pagamento.json', { credentials: 'same-origin' })
+            .then((response) => {
+                if (!response.ok) throw new Error('Impossibile caricare le modalità di pagamento');
+                return response.json();
+            });
+        paymentMethodsPromise.then((methods) => {
+                paymentMethod.dataset.paymentMethodsState = 'loaded';
+                paymentMethod.replaceChildren(new Option('Seleziona modalità', ''));
+                methods.forEach((method) => paymentMethod.append(new Option(method.name, method.value)));
+                paymentMethod.value = paymentMethod.dataset.preferred || 'MP05';
+            })
+            .catch((error) => {
+                console.error(error);
+                paymentMethod.dataset.paymentMethodsState = 'error';
+                paymentMethod.replaceChildren(new Option('Modalità non disponibili', ''));
+            });
+    };
+
+    const updatePaymentStatusDisplay = (order = null) => {
+        const status = paymentStatus?.value || 'unpaid';
+        if (paymentAmount) {
+            paymentAmount.readOnly = status === 'paid';
+            if (status === 'paid' && order) paymentAmount.value = '0.00';
+        }
+        if (paymentReceived) paymentReceived.hidden = status !== 'paid' && status !== 'partial';
+        if (paymentReceivedDetail) {
+            const paidAmount = Number(order?.paid_amount || 0);
+            paymentReceivedDetail.textContent = paidAmount > 0
+                ? `Incassato: ${paidAmount.toFixed(2)} ${order?.currency || 'EUR'}`
+                : 'Nessun pagamento registrato';
+        }
+    };
+
+    loadPaymentMethods();
+    paymentStatus?.addEventListener('change', () => updatePaymentStatusDisplay());
+    paymentAmount?.addEventListener('input', () => {
+        paymentAmountManual = true;
+    });
 
     const generateInvoiceNumber = () => {
         if (!documentNumberInput) return;
@@ -299,6 +353,15 @@ const initializeFatturazione = () => {
         invoiceForm.dataset.saveInitialized = 'true';
         bindDocument('invoice-new-form', 'invoice:new', () => {
             invoiceForm.reset();
+            paymentAmountManual = false;
+            if (orderIdInput) orderIdInput.value = '';
+            if (paymentMethod) {
+                paymentMethod.value = 'MP05';
+                delete paymentMethod.dataset.preferred;
+            }
+            if (paymentTerms) paymentTerms.value = 'TP02';
+            if (paymentAmount) paymentAmount.value = '';
+            updatePaymentStatusDisplay();
             invoiceSaveStatus.textContent = '';
             saveInvoiceButton.textContent = 'Salva fattura';
             saveInvoiceButton.disabled = false;
@@ -358,6 +421,8 @@ const initializeFatturazione = () => {
         const summaryTemplate = document.querySelector('[data-vat-summary-template]');
         const bolloContainer = document.getElementById('bollo-container');
         const bolloCheckbox = document.getElementById('bollo-to-client');
+        const invoiceTypeInput = document.getElementById('invoice-type');
+        const invoiceTypeStatus = document.getElementById('invoice-type-status');
 
         const roundMoney = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -464,6 +529,7 @@ const initializeFatturazione = () => {
         const refreshCassa = () => {
             updateCassa();
             updateBolloVisibility();
+            updateInvoiceType();
         };
 
         if (cassaReady) {
@@ -523,6 +589,45 @@ const initializeFatturazione = () => {
             }
         };
 
+        const getDocumentTotal = () => {
+            let total = 0;
+            beniForm.querySelectorAll('[data-beni-row]').forEach((row) => {
+                const quantity = Number(row.querySelector('[name="quantita[]"]').value) || 0;
+                const unitPrice = Number(row.querySelector('[name="prezzo_unitario[]"]').value) || 0;
+                const rate = Number(row.querySelector('select[name="aliquota_iva[]"]').value) || 0;
+                total += quantity * unitPrice * (1 + rate / 100);
+            });
+            summaryList?.querySelectorAll('[name="spese_accessorie[]"]').forEach((input) => {
+                const row = input.closest('[data-vat-summary-row]');
+                const rate = Number(row?.querySelector('[data-summary-rate]')?.value) || 0;
+                const expense = Number(input.value) || 0;
+                total += expense * (1 + rate / 100);
+            });
+            summaryList?.querySelectorAll('[name="spese_accessorie_non_imponibili[]"]').forEach((input) => {
+                total += Number(input.value) || 0;
+            });
+            total += cassaContribution;
+            if (cassaTax) total += Number(cassaTax.value) || 0;
+            if (bolloCheckbox?.checked) total += 2;
+            const documentTotal = roundMoney(total);
+            if (paymentAmount && !paymentAmountManual && !(orderIdInput?.value)) {
+                paymentAmount.value = documentTotal.toFixed(2);
+            }
+            return documentTotal;
+        };
+
+        const updateInvoiceType = () => {
+            if (!invoiceTypeInput || !invoiceTypeStatus) return;
+            const hasCassa = Boolean(cassaSelect?.value);
+            const simplified = getDocumentTotal() <= 400 && !hasCassa;
+            invoiceTypeInput.value = simplified ? 'semplificata' : 'ordinaria';
+            invoiceTypeStatus.innerHTML = simplified
+                ? '<strong>Fattura semplificata</strong> (default; ordinaria oltre € 400,00)'
+                : hasCassa
+                    ? '<strong>Fattura ordinaria</strong> (necessaria per la cassa previdenziale)'
+                    : '<strong>Fattura ordinaria</strong> (totale documento superiore a € 400,00)';
+        };
+
         beniForm.querySelectorAll('[data-beni-row]').forEach((itemRow, index) => {
             itemRow.dataset.vatSummaryId = `item-${index + 1}`;
         });
@@ -534,6 +639,7 @@ const initializeFatturazione = () => {
                 {
                     nature: summaryRow.querySelector('[data-summary-nature]').value,
                     expenses: summaryRow.querySelector('[name="spese_accessorie[]"]').value,
+                    nonTaxableExpenses: summaryRow.querySelector('[name="spese_accessorie_non_imponibili[]"]').value,
                     reference: summaryRow.querySelector('[name="riferimento_normativo[]"]').value
                 }
             ]));
@@ -559,6 +665,7 @@ const initializeFatturazione = () => {
                 row.querySelector('[data-summary-taxable]').id = `${rowId}-taxable`;
                 row.querySelector('[data-summary-tax]').id = `${rowId}-tax`;
                 row.querySelector('[name="spese_accessorie[]"]').id = `${rowId}-expenses`;
+                row.querySelector('[name="spese_accessorie_non_imponibili[]"]').id = `${rowId}-non-taxable-expenses`;
                 row.querySelector('[name="riferimento_normativo[]"]').id = `${rowId}-reference`;
                 if (rate > 0) {
                     natureSelect.replaceChildren(new Option('Non applicabile', ''));
@@ -574,6 +681,7 @@ const initializeFatturazione = () => {
                 }
                 natureValue.value = natureSelect.value;
                 row.querySelector('[name="spese_accessorie[]"]').value = previous?.expenses || '0.00';
+                row.querySelector('[name="spese_accessorie_non_imponibili[]"]').value = previous?.nonTaxableExpenses || '0.00';
                 const defaultReference = noVatRegime && rate === 0 ? regimeDefaultReference() : '';
                 const keepPrevious = previous?.reference && previous.reference !== regimeDefaultReference();
                 row.querySelector('[name="riferimento_normativo[]"]').value = keepPrevious ? previous.reference : defaultReference;
@@ -582,13 +690,25 @@ const initializeFatturazione = () => {
                 });
                 row.querySelector('[data-summary-rate]').value = rate;
                 row.querySelector('[data-summary-taxable]').value = taxable.toFixed(2);
-                row.querySelector('[data-summary-tax]').value = (taxable * (rate / 100)).toFixed(2);
+                const taxableExpenses = Number(row.querySelector('[name="spese_accessorie[]"]').value) || 0;
+                row.querySelector('[data-summary-tax]').value = ((taxable + taxableExpenses) * (rate / 100)).toFixed(2);
                 summaryList.append(row);
             });
             refreshCassa();
         };
+        const updateSummaryTax = (summaryRow) => {
+            const rate = Number(summaryRow.querySelector('[data-summary-rate]')?.value) || 0;
+            const taxable = Number(summaryRow.querySelector('[data-summary-taxable]')?.value) || 0;
+            const taxableExpenses = Number(summaryRow.querySelector('[name="spese_accessorie[]"]')?.value) || 0;
+            const taxInput = summaryRow.querySelector('[data-summary-tax]');
+            if (taxInput) {
+                taxInput.value = ((taxable + taxableExpenses) * (rate / 100)).toFixed(2);
+            }
+        };
         summaryList?.addEventListener('input', (event) => {
-            if (event.target.matches('[name="spese_accessorie[]"]')) {
+            if (event.target.matches('[name="spese_accessorie[]"], [name="spese_accessorie_non_imponibili[]"]')) {
+                const summaryRow = event.target.closest('[data-vat-summary-row]');
+                if (summaryRow) updateSummaryTax(summaryRow);
                 refreshCassa();
             }
         });
@@ -926,6 +1046,24 @@ const initializeFatturazione = () => {
         });
 
     const applyOrderToInvoice = (order) => {
+        if (orderIdInput) orderIdInput.value = String(order.id || '');
+        if (paymentStatus) paymentStatus.value = order.payment_status || 'unpaid';
+        if (paymentTerms) paymentTerms.value = order.payment_status === 'partial' ? 'TP01' : 'TP02';
+        if (paymentMethod && order.last_payment_method) {
+            paymentMethod.value = order.last_payment_method;
+            paymentMethod.dataset.preferred = order.last_payment_method;
+        }
+        if (paymentReference) paymentReference.value = order.last_payment_reference || '';
+        if (paymentAmount) {
+            const total = regimeSelect?.value === 'RF19'
+                ? Number(order.total_without_vat || 0)
+                : Number(order.total || 0);
+            const paid = Number(order.paid_amount || 0);
+            paymentAmount.value = Math.max(0, total - paid).toFixed(2);
+            paymentAmountManual = false;
+        }
+        updatePaymentStatusDisplay(order);
+
         const causaleField = document.getElementById('causale');
         if (causaleField) causaleField.value = order.notes || '';
 
@@ -992,6 +1130,8 @@ const initializeFatturazione = () => {
         const trigger = document.querySelector('.dashboard-navbar__user-trigger, [data-profile-modal-open]');
         if (trigger) trigger.click();
     });
+
+    if (!clientForm || !clientSelect || !useClientButton || !clientCompletion || !billingForm) return;
 
     loadClients();
     bindDocument('invoice-new-client', 'invoice:new', () => {

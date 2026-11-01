@@ -90,6 +90,15 @@ if (!$client) {
     respond(403, ['success' => false, 'message' => 'Il cliente selezionato non è valido']);
 }
 
+$orderId = (int) ($_POST['order_id'] ?? 0);
+if ($orderId > 0) {
+    $orderStmt = $pdo->prepare('SELECT id FROM orders WHERE id = :id AND client_id = :client_id AND user_id = :user_id LIMIT 1');
+    $orderStmt->execute([':id' => $orderId, ':client_id' => $clientId, ':user_id' => $userId]);
+    if (!$orderStmt->fetchColumn()) {
+        respond(422, ['success' => false, 'message' => 'Ordine selezionato non valido']);
+    }
+}
+
 // Controllo esclusione fatture verso PA (Codice destinatario di 6 caratteri o formato FPA12)
 $sdiCode = trim((string) ($client['sdi_code'] ?? ''));
 if (strlen($sdiCode) === 6 || strtolower((string) ($_POST['invoice_format'] ?? '')) === 'pa') {
@@ -102,9 +111,6 @@ $currency = strtoupper(trim((string) ($_POST['divisa'] ?? 'EUR')));
 if ($currency === '') {
     $currency = 'EUR';
 }
-
-$invoiceTypeInput = strtolower(trim((string) ($_POST['invoice_type'] ?? 'ordinaria')));
-$isSimplified = ($invoiceTypeInput === 'semplificata');
 
 // Normalizzazione e salvaguardia del formato date (gg-mm-aaaa o yyyy-mm-dd)
 function normalizeDate(string $date): string {
@@ -125,6 +131,27 @@ $issueDateRaw = (string) ($_POST['issue_date'] ?? '');
 $dueDateRaw = (string) ($_POST['due_date'] ?? '');
 $issueDate = normalizeDate($issueDateRaw);
 $dueDate = normalizeDate($dueDateRaw);
+
+$paymentStatus = strtolower(trim((string) ($_POST['payment_status'] ?? 'unpaid')));
+$paymentTermsCode = strtoupper(trim((string) ($_POST['payment_terms'] ?? 'TP02')));
+$paymentMethodCode = strtoupper(trim((string) ($_POST['payment_method'] ?? 'MP05')));
+$paymentAmount = round((float) ($_POST['payment_amount'] ?? 0), 2);
+$paymentReference = trim((string) ($_POST['payment_reference'] ?? ''));
+$validPaymentStatuses = ['unpaid', 'partial', 'paid'];
+$validPaymentTerms = ['TP01', 'TP02', 'TP03'];
+$validPaymentMethods = array_map(
+    static fn (array $entry): string => (string) ($entry['value'] ?? ''),
+    json_decode((string) file_get_contents(dirname(__DIR__) . '/assets/data/modalita-pagamento.json'), true) ?: []
+);
+if (!in_array($paymentStatus, $validPaymentStatuses, true)
+    || !in_array($paymentTermsCode, $validPaymentTerms, true)
+    || !in_array($paymentMethodCode, $validPaymentMethods, true)
+    || strlen($paymentReference) > 60
+    || $paymentAmount < 0
+    || $paymentAmount > 1000000000
+) {
+    respond(422, ['success' => false, 'message' => 'Dati di pagamento non validi']);
+}
 
 // Regime fiscale del cedente: catalogo regimi-fiscali.json. Nessun valore di ripiego: un regime assente,
 // sconosciuto o non gestito blocca l'emissione invece di essere trattato in silenzio come ordinario.
@@ -210,6 +237,7 @@ $unitPrices = $_POST['prezzo_unitario'] ?? null;
 $vatRates = $_POST['aliquota_iva'] ?? null;
 $natures = $_POST['natura'] ?? null;
 $expenses = $_POST['spese_accessorie'] ?? null;
+$nonTaxableExpenses = $_POST['spese_accessorie_non_imponibili'] ?? null;
 $legalReferences = $_POST['riferimento_normativo'] ?? null;
 $lineArrays = [$descriptions, $quantities, $unitPrices, $vatRates, $natures, $expenses, $legalReferences];
 
@@ -226,6 +254,12 @@ foreach ($lineArrays as $values) {
 if ($lineCount === 0) {
     respond(422, ['success' => false, 'message' => 'Aggiungi almeno un bene o servizio']);
 }
+if ($nonTaxableExpenses === null) {
+    $nonTaxableExpenses = array_fill(0, $lineCount, '0');
+}
+if (!is_array($nonTaxableExpenses) || count($nonTaxableExpenses) !== $lineCount) {
+    respond(422, ['success' => false, 'message' => 'Dati delle spese anticipate non validi']);
+}
 
 try {
     $natureCatalog = loadNatureCatalog();
@@ -235,6 +269,7 @@ try {
     $invoiceTotal = 0.0;
     $taxableSum = 0.0;
     $expensesSum = 0.0;
+    $nonTaxableExpensesSum = 0.0;
 
     foreach ($descriptions as $index => $rawDescription) {
         $quantityRaw = (string) $quantities[$index];
@@ -243,12 +278,14 @@ try {
         $rate = filter_var($rateInput, FILTER_VALIDATE_INT);
         $nature = trim((string) $natures[$index]);
         $expenseRaw = (string) $expenses[$index];
+        $nonTaxableExpenseRaw = (string) $nonTaxableExpenses[$index];
         $legalReference = trim((string) $legalReferences[$index]);
 
         if ($rawDescription === '' || strlen($rawDescription) > 8000
             || !is_numeric($quantityRaw) || !is_finite((float) $quantityRaw) || (float) $quantityRaw < 0
             || !is_numeric($unitPriceRaw) || !is_finite((float) $unitPriceRaw) || (float) $unitPriceRaw < 0
-            || $rate === false || !is_numeric($expenseRaw) || !is_finite((float) $expenseRaw) || (float) $expenseRaw < 0) {
+            || $rate === false || !is_numeric($expenseRaw) || !is_finite((float) $expenseRaw) || (float) $expenseRaw < 0
+            || !is_numeric($nonTaxableExpenseRaw) || !is_finite((float) $nonTaxableExpenseRaw) || (float) $nonTaxableExpenseRaw < 0) {
             respond(422, ['success' => false, 'message' => 'Controlla i dati dei beni, delle aliquote e del riepilogo']);
         }
 
@@ -278,12 +315,14 @@ try {
         $quantity = round((float) $quantityRaw, 2);
         $unitPrice = round((float) $unitPriceRaw, 2);
         $additionalExpenses = round((float) $expenseRaw, 2);
+        $nonTaxableAdditionalExpenses = round((float) $nonTaxableExpenseRaw, 2);
         $taxableAmount = round($quantity * $unitPrice, 2);
-        $taxAmount = round($taxableAmount * ($rate / 100), 2);
+        $taxAmount = round(($taxableAmount + $additionalExpenses) * ($rate / 100), 2);
         $lineTotal = round($taxableAmount + $taxAmount + $additionalExpenses, 2);
         $invoiceTotal = round($invoiceTotal + $lineTotal, 2);
         $taxableSum = round($taxableSum + $taxableAmount, 2);
         $expensesSum = round($expensesSum + $additionalExpenses, 2);
+        $nonTaxableExpensesSum = round($nonTaxableExpensesSum + $nonTaxableAdditionalExpenses, 2);
 
         $lineItems[] = [
             'description' => $rawDescription,
@@ -294,6 +333,7 @@ try {
             'taxable_amount' => $taxableAmount,
             'tax_amount' => $taxAmount,
             'additional_expenses' => $additionalExpenses,
+            'non_taxable_additional_expenses' => $nonTaxableAdditionalExpenses,
             'legal_reference' => $legalReference,
             'line_total' => $lineTotal,
         ];
@@ -338,14 +378,22 @@ try {
     }
 
     // Bollo
-    $bolloRequired = (!$appliesVat && ($taxableSum + $expensesSum + $cassaImporto) > 77.47);
+    $bolloRequired = (!$appliesVat && ($taxableSum + $expensesSum + $nonTaxableExpensesSum + $cassaImporto) > 77.47);
     if ($bolloRequired) {
         if ($bolloToClient) {
             $bolloAmount = 2.00;
         }
     }
 
-    $invoiceTotal = round($invoiceTotal + $cassaImporto + $cassaImposta + $bolloAmount, 2);
+    $invoiceTotal = round($invoiceTotal + $nonTaxableExpensesSum + $cassaImporto + $cassaImposta + $bolloAmount, 2);
+    if ($paymentAmount > $invoiceTotal) {
+        respond(422, ['success' => false, 'message' => 'L\'importo del pagamento non può superare il totale della fattura']);
+    }
+
+    // La scelta del tipo documento è automatica: la semplificata è ammessa solo fino a 400 euro.
+    // FSM10 non prevede il blocco DatiCassaPrevidenziale: la presenza della
+    // cassa richiede quindi una fattura ordinaria anche sotto i 400 euro.
+    $isSimplified = $invoiceTotal <= 400.00 && $cassaTipo === '';
 
     // Controllo limite per fattura semplificata (<= 400 EUR)
     if ($isSimplified && $invoiceTotal > 400.00) {
@@ -367,6 +415,9 @@ try {
     };
     foreach ($lineItems as $li) {
         $addToVatSummary((int) $li['vat_rate'], $li['nature'], (float) $li['taxable_amount'], (float) $li['additional_expenses'], (string) $li['legal_reference']);
+    }
+    if ($nonTaxableExpensesSum > 0) {
+        $addToVatSummary(0, 'N1', 0.0, $nonTaxableExpensesSum, 'Spese anticipate escluse ex art. 15 DPR 633/72');
     }
     if ($cassaTipo !== '' && $cassaImporto > 0) {
         $addToVatSummary($cassaAliquotaIva, $cassaNatura !== '' ? $cassaNatura : null, $cassaImporto, 0.0, '');
@@ -406,7 +457,7 @@ try {
         $supplier->setReaOffice((string) $supplierProfile['rea_office']);
         $supplier->setReaNumber((string) $supplierProfile['rea_number']);
         if (!empty($supplierProfile['share_capital'])) {
-            $supplier->setCapital((float) $supplierProfile['share_capital']);
+            $supplier->setCapital(number_format((float) $supplierProfile['share_capital'], 2, '.', ''));
         }
         if (!empty($supplierProfile['sole_shareholder'])) {
             $supplier->setAssociateType((string) $supplierProfile['sole_shareholder']);
@@ -498,6 +549,17 @@ try {
             }
             $documentInstance->addSimplifiedLine($sLine);
         }
+        if ($nonTaxableExpensesSum > 0) {
+            $documentInstance->addSimplifiedLine(
+                (new SimplifiedLine())
+                    ->setDescription('Spese anticipate escluse ex art. 15 DPR 633/72')
+                    ->setTotal($nonTaxableExpensesSum)
+                    ->setTaxPercentage(0)
+                    ->setTaxAmount(0)
+                    ->setVatNature('N1')
+                    ->setReference('Spese anticipate escluse ex art. 15 DPR 633/72')
+            );
+        }
     } else {
         // Righe ordinarie
         foreach ($lineItems as $index => $li) {
@@ -542,19 +604,23 @@ try {
 
     // Informazioni di pagamento
     $ibanToUse = trim((string) ($supplierProfile['iban'] ?? ''));
-    if ($ibanToUse === '') {
-        $ibanToUse = 'IT60X0000000000000000000000';
+    $bankMethods = ['MP05', 'MP16', 'MP17', 'MP19', 'MP20', 'MP21'];
+    $paymentDetails = (new PaymentDetails())
+        ->setMethod(new PaymentMethod($paymentMethodCode))
+        ->setDueDate(new DateTime($dueDate))
+        ->setAmount($paymentAmount);
+    if (in_array($paymentMethodCode, $bankMethods, true) && $ibanToUse !== '') {
+        $paymentDetails->setIban($ibanToUse);
+    }
+    if ($paymentReference !== '') {
+        $paymentDetails->setPaymentCode($paymentReference);
     }
 
     $documentInstance->addPaymentInformations(
         (new PaymentInfo())
-            ->setTerms(PaymentTerm::TP02())
+            ->setTerms(new PaymentTerm($paymentTermsCode))
             ->addDetails(
-                (new PaymentDetails())
-                    ->setMethod(PaymentMethod::MP05())
-                    ->setDueDate(new DateTime($dueDate))
-                    ->setAmount($invoiceTotal)
-                    ->setIban($ibanToUse)
+                $paymentDetails
             )
     );
 
@@ -604,10 +670,11 @@ try {
 
     // Salvataggio nel database
     $pdo->beginTransaction();
-    $insertInvoice = $pdo->prepare('INSERT INTO invoices (client_id, user_id, document_number, issue_date, due_date, currency, tax_regime, total, bollo, bollo_to_client, cassa_type, cassa_amount) VALUES (:client_id, :user_id, :document_number, :issue_date, :due_date, :currency, :tax_regime, :total, :bollo, :bollo_to_client, :cassa_type, :cassa_amount)');
+    $insertInvoice = $pdo->prepare('INSERT INTO invoices (client_id, order_id, user_id, document_number, issue_date, due_date, currency, tax_regime, total, bollo, bollo_to_client, cassa_type, cassa_amount, is_paid) VALUES (:client_id, :order_id, :user_id, :document_number, :issue_date, :due_date, :currency, :tax_regime, :total, :bollo, :bollo_to_client, :cassa_type, :cassa_amount, :is_paid)');
     
     $insertInvoice->execute([
         ':client_id' => $clientId,
+        ':order_id' => $orderId > 0 ? $orderId : null,
         ':user_id' => $userId,
         ':document_number' => $documentNumber,
         ':issue_date' => $issueDate,
@@ -619,6 +686,7 @@ try {
         ':bollo_to_client' => $bolloToClient ? 1 : 0,
         ':cassa_type' => $cassaTipo !== '' ? $cassaTipo : null,
         ':cassa_amount' => $cassaTipo !== '' ? number_format($cassaImporto, 2, '.', '') : 0.00,
+        ':is_paid' => $paymentStatus === 'paid' ? 1 : 0,
     ]);
     $invoiceId = (int) $pdo->lastInsertId();
     $pdo->commit();

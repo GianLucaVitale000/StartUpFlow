@@ -190,21 +190,30 @@ $username = $_SESSION['username'] ?? 'Utente';
                 $hasRegime = $taxRegimeCode !== '' && $taxRegimeLabel !== null;
                 ?>
                 <div class="dati-fattura">
-                    <label>Regime Fiscale (da anagrafica):</label>
-                    <?php if ($hasRegime): ?>
-                        <span id="regime-fiscale-display"><?php echo $escape($taxRegimeLabel); ?></span>
-                        <input type="hidden" id="regime-fiscale" name="tax_regime" value="<?php echo $escape($taxRegimeCode); ?>"
-                               data-applies-vat="<?php echo $regimeInfo['applies_vat'] ? '1' : '0'; ?>"
-                               data-fixed-nature="<?php echo $escape($regimeInfo['fixed_nature']); ?>"
-                               data-default-reference="<?php echo $escape($regimeInfo['default_reference']); ?>"
-                               data-withholding="<?php echo $regimeInfo['withholding'] ? '1' : '0'; ?>">
-                    <?php else: ?>
-                        <span id="regime-fiscale-display" style="color: #dc2626; font-weight: bold;">Regime fiscale non specificato in anagrafica</span>
-                        <input type="hidden" id="regime-fiscale" name="tax_regime" value="">
-                        <div style="margin: 0.5rem 0; padding: 0.75rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; color: #991b1b; font-size: 0.9rem;">
-                            <strong>Attenzione:</strong> non hai specificato il regime fiscale in anagrafica. Vai nel profilo utente (anagrafica) per selezionare un regime fiscale valido prima di emettere fatture.
+                    <input type="hidden" id="invoice-type" name="invoice_type" value="semplificata">
+                    <div class="dati-fattura__field">
+                        <label for="invoice-type-status">Tipo documento</label>
+                        <div id="invoice-type-status" role="status" aria-live="polite">
+                            <strong>Fattura semplificata</strong> (default; ordinaria oltre € 400,00)
                         </div>
-                    <?php endif; ?>
+                    </div>
+                    <div class="dati-fattura__field">
+                        <label for="regime-fiscale-display">Regime fiscale</label>
+                        <?php if ($hasRegime): ?>
+                            <span id="regime-fiscale-display"><?php echo $escape($taxRegimeLabel); ?></span>
+                            <input type="hidden" id="regime-fiscale" name="tax_regime" value="<?php echo $escape($taxRegimeCode); ?>"
+                                   data-applies-vat="<?php echo $regimeInfo['applies_vat'] ? '1' : '0'; ?>"
+                                   data-fixed-nature="<?php echo $escape($regimeInfo['fixed_nature']); ?>"
+                                   data-default-reference="<?php echo $escape($regimeInfo['default_reference']); ?>"
+                                   data-withholding="<?php echo $regimeInfo['withholding'] ? '1' : '0'; ?>">
+                        <?php else: ?>
+                            <span id="regime-fiscale-display" style="color: #dc2626; font-weight: bold;">Regime fiscale non specificato in anagrafica</span>
+                            <input type="hidden" id="regime-fiscale" name="tax_regime" value="">
+                            <div style="margin: 0.5rem 0; padding: 0.75rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; color: #991b1b; font-size: 0.9rem;">
+                                <strong>Attenzione:</strong> non hai specificato il regime fiscale in anagrafica. Vai nel profilo utente (anagrafica) per selezionare un regime fiscale valido prima di emettere fatture.
+                            </div>
+                        <?php endif; ?>
+                    </div>
                     <label for="data-documento">Data Documento:</label>
                     <input type="date" id="data-documento" name="issue_date" required>
                     <label for="data-scadenza">Data Scadenza:</label>
@@ -215,6 +224,40 @@ $username = $_SESSION['username'] ?? 'Utente';
                     </select>
                     <label for="num-doc">Numero Documento:</label>
                     <input id="num-doc" name="document_number" type="text" placeholder="Generazione numero..." readonly required>
+                </div>
+                <div id="pagamento-form">
+                    <strong>Pagamento</strong>
+                    <input type="hidden" id="order-id" name="order_id" value="">
+                    <div class="vat-summary-grid">
+                        <label for="stato-pagamento">Stato pagamento</label>
+                        <select id="stato-pagamento" name="payment_status" required>
+                            <option value="unpaid">Da pagare</option>
+                            <option value="partial">Pagamento parziale</option>
+                            <option value="paid">Pagato</option>
+                        </select>
+                        <label for="condizioni-pagamento">Condizioni di pagamento</label>
+                        <select id="condizioni-pagamento" name="payment_terms" required>
+                            <?php foreach ([
+                                ['TP01', 'Pagamento a rate'],
+                                ['TP02', 'Pagamento completo'],
+                                ['TP03', 'Pagamento anticipato'],
+                            ] as $term): ?>
+                                <option value="<?php echo $escape($term[0]); ?>"><?php echo $escape($term[1]); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                        <label for="modalita-pagamento">Modalità di pagamento</label>
+                        <select id="modalita-pagamento" name="payment_method" required>
+                            <option value="">Caricamento modalità...</option>
+                        </select>
+                        <label for="importo-pagamento">Importo da pagare</label>
+                        <input type="number" id="importo-pagamento" name="payment_amount" min="0" step="0.01" required>
+                        <label for="riferimento-pagamento">Riferimento pagamento</label>
+                        <input type="text" id="riferimento-pagamento" name="payment_reference" maxlength="100" placeholder="CRO, identificativo transazione (facoltativo)">
+                        <div id="pagamento-effettuato" hidden>
+                            <span>Pagamento registrato</span>
+                            <strong id="pagamento-effettuato-dettaglio"></strong>
+                        </div>
+                    </div>
                 </div>
                 <div class="dati-fattura__bollo" id="bollo-container" hidden>
                     <input type="checkbox" id="bollo-to-client" name="bollo_to_client" value="1">
@@ -265,6 +308,8 @@ $username = $_SESSION['username'] ?? 'Utente';
                                 <input type="number" name="imposta[]" step="0.01" data-summary-tax readonly>
                                 <label data-summary-label="expenses">Spese accessorie imponibili</label>
                                 <input type="number" name="spese_accessorie[]" step="0.01" min="0" value="0.00">
+                                <label data-summary-label="non-taxable-expenses">Spese escluse ex art. 15</label>
+                                <input type="number" name="spese_accessorie_non_imponibili[]" step="0.01" min="0" value="0.00">
                                 <label data-summary-label="reference">Riferimento normativo</label>
                                 <input type="text" name="riferimento_normativo[]" maxlength="100" placeholder="Inserisci riferimento normativo">
                             </div>
