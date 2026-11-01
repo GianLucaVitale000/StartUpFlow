@@ -638,6 +638,21 @@ body.dashboard-page {
 	gap: 1rem;
 }
 
+.vat-summary-total {
+	display: flex;
+	justify-content: flex-end;
+	gap: 1rem;
+	margin-top: 1rem;
+	padding: 0.75rem 1rem;
+	border-top: 2px solid rgba(17, 17, 17, 0.12);
+	font-weight: 700;
+	color: #3f4657;
+}
+
+.vat-summary-total strong {
+	color: #111;
+}
+
 .form-riepilogo {
 	min-width: 0;
 	margin: 0;
@@ -683,11 +698,13 @@ body.dashboard-page {
 	color: #4a5160;
 }
 
-#cassa-form {
+#cassa-form,
+#ritenuta-form {
 	margin-top: 1.5rem;
 }
 
-#cassa-form h3 {
+#cassa-form h3,
+#ritenuta-form h3 {
 	margin: 0 0 1rem;
 	font-size: 1.1rem;
 	color: #3f4657;

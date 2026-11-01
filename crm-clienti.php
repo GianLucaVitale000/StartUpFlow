@@ -770,7 +770,7 @@ function renderEdit($client) {
                 <input type="text" name="city" class="form-control" value="' . htmlspecialchars($client->city ?? '') . '">
             </div>
             <div class="form-group">
-                <label>Stato:</label>
+                <label>Provincia:</label>
                 <input type="text" name="state" class="form-control" value="' . htmlspecialchars($client->state ?? '') . '">
             </div>
             <div class="form-group">
@@ -849,7 +849,7 @@ function renderShow($client, $contacts, $activities, $orders) {
                 <p class="card-text"><strong>Telefono:</strong> ' . htmlspecialchars($client->phone ?? '') . '</p>
                 <p class="card-text"><strong>Indirizzo:</strong> ' . htmlspecialchars($client->address ?? '') . '</p>
                 <p class="card-text"><strong>Città:</strong> ' . htmlspecialchars($client->city ?? '') . '</p>
-                <p class="card-text"><strong>Stato:</strong> ' . htmlspecialchars($client->state ?? '') . '</p>
+                <p class="card-text"><strong>Provincia:</strong> ' . htmlspecialchars($client->state ?? '') . '</p>
                 <p class="card-text"><strong>CAP:</strong> ' . htmlspecialchars($client->postal_code ?? '') . '</p>
                 <p class="card-text"><strong>Paese:</strong> ' . htmlspecialchars($client->country ?? '') . '</p>
                 <p class="card-text"><strong>P.IVA:</strong> ' . htmlspecialchars($client->vat_number ?? '') . '</p>

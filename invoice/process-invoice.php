@@ -38,9 +38,11 @@ if ($userId === null || $clientId === null) {
 
 use FatturaElettronicaPhp\FatturaElettronica\Address;
 use FatturaElettronicaPhp\FatturaElettronica\Customer;
+use FatturaElettronicaPhp\FatturaElettronica\Deduction;
 use FatturaElettronicaPhp\FatturaElettronica\DigitalDocument;
 use FatturaElettronicaPhp\FatturaElettronica\DigitalDocumentInstance;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\DocumentType;
+use FatturaElettronicaPhp\FatturaElettronica\Enums\DeductionType;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\PaymentMethod;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\PaymentTerm;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\TaxRegime;
@@ -180,7 +182,27 @@ $cassaNatura = trim((string) ($_POST['cassa_natura'] ?? ''));
 $cassaImporto = (float) ($_POST['cassa_importo'] ?? 0);
 $cassaImposta = (float) ($_POST['cassa_imposta'] ?? 0);
 $cassaRiferimento = trim((string) ($_POST['cassa_riferimento'] ?? ''));
-$cassaRitenuta = (int) ($_POST['cassa_ritenuta'] ?? 0);
+$ritenutaTipo = strtoupper(trim((string) ($_POST['ritenuta_tipo'] ?? '')));
+$ritenutaAliquota = (float) ($_POST['ritenuta_aliquota'] ?? 0);
+
+$ritenuteCatalogData = json_decode(
+    (string) file_get_contents(dirname(__DIR__) . '/assets/data/ritenute.json'),
+    true
+);
+$ritenuteCatalog = [];
+if (is_array($ritenuteCatalogData)) {
+    foreach ($ritenuteCatalogData as $entry) {
+        if (isset($entry['value'], $entry['name'])) {
+            $ritenuteCatalog[(string) $entry['value']] = (string) $entry['name'];
+        }
+    }
+}
+if ($ritenutaTipo !== '' && !isset($ritenuteCatalog[$ritenutaTipo])) {
+    respond(422, ['success' => false, 'message' => 'Tipo di ritenuta non valido']);
+}
+if ($ritenutaAliquota < 0 || $ritenutaAliquota > 100) {
+    respond(422, ['success' => false, 'message' => 'Aliquota ritenuta non valida']);
+}
 
 function isValidDate(string $date): bool {
     $parsedDate = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
@@ -339,13 +361,18 @@ try {
         ];
     }
 
+    $ritenutaAmount = 0.0;
+    if ($ritenutaTipo !== '' && $regimeInfo['withholding']) {
+        $ritenutaAmount = round($taxableSum * $ritenutaAliquota / 100, 2);
+    } else {
+        $ritenutaTipo = '';
+        $ritenutaAliquota = 0.0;
+    }
+
     // Cassa: le regole dipendono dal regime; con aliquota 0 serve la Natura (i campi disabilitati non arrivano nel POST).
     if ($cassaTipo !== '') {
         if (!$appliesVat) {
             $cassaAliquotaIva = 0;
-        }
-        if (!$regimeInfo['withholding']) {
-            $cassaRitenuta = 0;
         }
         if ($cassaAliquotaIva > 0) {
             $cassaNatura = '';
@@ -385,20 +412,18 @@ try {
         }
     }
 
-    $invoiceTotal = round($invoiceTotal + $nonTaxableExpensesSum + $cassaImporto + $cassaImposta + $bolloAmount, 2);
-    if ($paymentAmount > $invoiceTotal) {
-        respond(422, ['success' => false, 'message' => 'L\'importo del pagamento non può superare il totale della fattura']);
-    }
-
+    $grossInvoiceTotal = round($invoiceTotal + $nonTaxableExpensesSum + $cassaImporto + $cassaImposta + $bolloAmount, 2);
+    $invoiceTotal = round($grossInvoiceTotal - $ritenutaAmount, 2);
     // La scelta del tipo documento è automatica: la semplificata è ammessa solo fino a 400 euro.
     // FSM10 non prevede il blocco DatiCassaPrevidenziale: la presenza della
     // cassa richiede quindi una fattura ordinaria anche sotto i 400 euro.
-    $isSimplified = $invoiceTotal <= 400.00 && $cassaTipo === '';
+    $isSimplified = $grossInvoiceTotal <= 400.00 && $cassaTipo === '' && $ritenutaTipo === '';
 
     // Controllo limite per fattura semplificata (<= 400 EUR)
     if ($isSimplified && $invoiceTotal > 400.00) {
         respond(422, ['success' => false, 'message' => 'Le fatture semplificate non possono superare l\'importo totale di 400,00 € (Art. 21-bis DPR 633/72)']);
     }
+    $paymentAmount = round(max(0, $invoiceTotal), 2);
 
     // --- Riepilogo IVA (DatiRiepilogo): una riga per coppia aliquota + natura, righe e cassa incluse ---
     $vatSummary = [];
@@ -516,9 +541,6 @@ try {
             ->setAmount($cassaImporto)
             ->setSubtotal($cassaImponibile > 0 ? $cassaImponibile : null)
             ->setTaxPercentage((float) $cassaAliquotaIva);
-        if ($cassaRitenuta) {
-            $fund->setDeduction(true);
-        }
         if ($cassaNatura !== '') {
             $fund->setVatNature($cassaNatura);
         }
@@ -526,6 +548,23 @@ try {
             $fund->setRepresentative($cassaRiferimento);
         }
         $documentInstance->addFund($fund);
+    }
+
+    if ($ritenutaTipo !== '') {
+        $ritenutaCausali = [
+            'RT01' => 'A',
+            'RT02' => 'A',
+            'RT03' => 'D',
+            'RT04' => 'A',
+            'RT05' => 'A',
+        ];
+        $documentInstance->addDeduction(
+            (new Deduction())
+                ->setType(new DeductionType($ritenutaTipo))
+                ->setPercentage($ritenutaAliquota)
+                ->setAmount($ritenutaAmount)
+                ->setDescription($ritenutaCausali[$ritenutaTipo] ?? 'A')
+        );
     }
 
     if ($causale !== '') {

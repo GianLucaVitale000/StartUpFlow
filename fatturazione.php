@@ -291,12 +291,18 @@ $username = $_SESSION['username'] ?? 'Utente';
                 <div id="riepilogo-importi-form">
                     <h3>Riepilogo importi per aliquota</h3>
                     <div class="vat-summary-list" data-vat-summary-list></div>
+                    <div class="vat-summary-total" data-vat-summary-total>
+                        <span>Imposta IVA totale</span>
+                        <strong>0,00</strong>
+                    </div>
                     <template data-vat-summary-template>
                         <div class="form-riepilogo" data-vat-summary-row>
                             <strong data-vat-summary-title></strong>
                             <div class="vat-summary-grid">
                                 <label data-summary-label="rate">Aliquota IVA</label>
                                 <input type="number" name="aliquota_iva1[]" data-summary-rate readonly>
+                                <label data-summary-label="tax">Imposta IVA</label>
+                                <input type="number" name="imposta[]" step="0.01" data-summary-tax readonly>
                                 <label data-summary-label="nature">Natura</label>
                                 <select data-summary-nature>
                                     <option value="">Caricamento Natura IVA...</option>
@@ -304,8 +310,6 @@ $username = $_SESSION['username'] ?? 'Utente';
                                 <input type="hidden" name="natura[]" data-summary-nature-value>
                                 <label data-summary-label="taxable">Imponibile</label>
                                 <input type="number" name="imponibile[]" step="0.01" data-summary-taxable readonly>
-                                <label data-summary-label="tax">Imposta</label>
-                                <input type="number" name="imposta[]" step="0.01" data-summary-tax readonly>
                                 <label data-summary-label="expenses">Spese accessorie imponibili</label>
                                 <input type="number" name="spese_accessorie[]" step="0.01" min="0" value="0.00">
                                 <label data-summary-label="non-taxable-expenses">Spese escluse ex art. 15</label>
@@ -348,8 +352,23 @@ $username = $_SESSION['username'] ?? 'Utente';
                             <input type="number" id="cassa-imposta" step="0.01" readonly tabindex="-1">
                             <label for="cassa-riferimento">Riferimento amministrazione</label>
                             <input type="text" id="cassa-riferimento" name="cassa_riferimento" maxlength="20" placeholder="Facoltativo">
-                            <label for="cassa-ritenuta">Concorre alla ritenuta</label>
-                            <input type="checkbox" id="cassa-ritenuta" name="cassa_ritenuta" value="1">
+                        </div>
+                    </div>
+                </div>
+                <div id="ritenuta-form" hidden>
+                    <h3>Ritenuta d'acconto</h3>
+                    <div class="form-riepilogo">
+                        <div class="vat-summary-grid cassa-grid">
+                            <label for="ritenuta-tipo">Tipo ritenuta</label>
+                            <select id="ritenuta-tipo" name="ritenuta_tipo" class="cassa-grid__wide">
+                                <option value="">Nessuna ritenuta</option>
+                            </select>
+                        </div>
+                        <div class="vat-summary-grid cassa-grid">
+                            <label for="ritenuta-aliquota">Aliquota ritenuta (%)</label>
+                            <input type="number" id="ritenuta-aliquota" name="ritenuta_aliquota" min="0" max="100" step="0.01" value="0">
+                            <label for="ritenuta-importo">Importo ritenuta</label>
+                            <input type="number" id="ritenuta-importo" step="0.01" readonly tabindex="-1" value="0.00">
                         </div>
                     </div>
                 </div>

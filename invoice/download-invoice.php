@@ -74,6 +74,10 @@ try {
         $cassaAmount = 0.0;
         $expensesAmount = 0.0;
         $nonTaxableExpensesAmount = 0.0;
+        $cassaTaxRate = 0.0;
+        $ritenutaAmount = 0.0;
+        $ritenutaRate = 0.0;
+        $ritenutaType = '';
         $virtualDuty = '';
         $vatNotes = [];
         $subtotal = 0.0;
@@ -82,6 +86,7 @@ try {
         $paymentMethod = '';
         $paymentAmount = null;
         $paymentStatusLabel = '';
+        $xmlVatSummary = [];
         $paymentMethodLabels = [];
         $paymentCatalog = json_decode((string) @file_get_contents(__DIR__ . '/../assets/data/modalita-pagamento.json'), true);
         if (is_array($paymentCatalog)) {
@@ -127,6 +132,15 @@ try {
                     foreach ($instance->getTotals() as $summaryTotal) {
                         $nature = $summaryTotal->getVatNature();
                         $natureCode = $nature !== null ? (string) $nature : '';
+                        $summaryRate = (float) ($summaryTotal->getTaxPercentage() ?? 0);
+                        $summaryKey = number_format($summaryRate, 2, '.', '');
+                        if ($natureCode !== 'N1') {
+                            $xmlVatSummary[$summaryKey] = [
+                                'rate' => $summaryRate,
+                                'taxable' => (float) ($summaryTotal->getTotal() ?? 0),
+                                'tax' => (float) ($summaryTotal->getTaxAmount() ?? 0),
+                            ];
+                        }
                         if (method_exists($summaryTotal, 'getOtherExpenses') && $summaryTotal->getOtherExpenses() !== null) {
                             if ($natureCode === 'N1') {
                                 $nonTaxableExpensesAmount += (float) $summaryTotal->getOtherExpenses();
@@ -145,6 +159,12 @@ try {
                     $funds = $instance->getFunds();
                     if (!empty($funds)) {
                         $cassaAmount = (float) $funds[0]->getAmount();
+                        $cassaTaxRate = (float) ($funds[0]->getTaxPercentage() ?? 0);
+                    }
+                    if ($instance->getDeductionType() !== null) {
+                        $ritenutaType = (string) $instance->getDeductionType();
+                        $ritenutaRate = (float) ($instance->getDeductionPercentage() ?? 0);
+                        $ritenutaAmount = (float) ($instance->getDeductionAmount() ?? 0);
                     }
 
                     if ($isSimplified) {
@@ -164,6 +184,7 @@ try {
                                 'UnitPrice' => number_format($lineTaxable, 2, '.', ''),
                                 'VatRate' => (string)($line->getTaxPercentage() ?? 0),
                                 'LineTotal' => number_format($lineTaxable, 2, '.', ''),
+                                'TaxAmount' => number_format((float) ($line->getTaxAmount() ?? 0), 2, '.', ''),
                                 'TaxableAmount' => $lineTaxable,
                             ];
                         }
@@ -177,6 +198,7 @@ try {
                                 'UnitPrice' => number_format((float)$line->getUnitPrice(), 2, '.', ''),
                                 'VatRate' => (string)($line->getTaxPercentage() ?? 0),
                                 'LineTotal' => number_format(round($lineTaxable * (1 + (float)($line->getTaxPercentage() ?? 0) / 100), 2), 2, '.', ''),
+                                'TaxAmount' => number_format(round($lineTaxable * (float)($line->getTaxPercentage() ?? 0) / 100, 2), 2, '.', ''),
                                 'TaxableAmount' => $lineTaxable,
                             ];
                         }
@@ -221,6 +243,7 @@ try {
                                 'UnitPrice' => $item['UnitPrice'] ?? '0',
                                 'VatRate' => $item['VatRate'] ?? '0',
                                 'LineTotal' => $item['LineTotal'] ?? '0',
+                                'TaxAmount' => $item['TaxAmount'] ?? '0',
                                 'TaxableAmount' => (float)($item['TaxableAmount'] ?? ($item['LineTotal'] ?? 0)),
                             ];
                         }
@@ -234,6 +257,48 @@ try {
                 }
             }
         }
+
+        $vatByRate = $xmlVatSummary;
+        if (empty($vatByRate)) {
+            foreach ($items as $item) {
+                $rate = (float) ($item['VatRate'] ?? 0);
+                $lineTotal = (float) ($item['LineTotal'] ?? 0);
+                $tax = (float) ($item['TaxAmount'] ?? 0);
+                $taxable = $isSimplified ? max(0, $lineTotal - $tax) : (float) ($item['TaxableAmount'] ?? 0);
+                if ($tax <= 0 && $rate > 0) {
+                    $tax = round($taxable * $rate / 100, 2);
+                }
+                $rateKey = number_format($rate, 2, '.', '');
+                if (!isset($vatByRate[$rateKey])) {
+                    $vatByRate[$rateKey] = [
+                        'rate' => $rate,
+                        'taxable' => 0.0,
+                        'tax' => 0.0,
+                    ];
+                }
+                $vatByRate[$rateKey]['taxable'] += $taxable;
+                $vatByRate[$rateKey]['tax'] += $tax;
+            }
+        }
+        if (empty($xmlVatSummary) && $cassaAmount > 0 && $cassaTaxRate > 0 && !empty($vatByRate)) {
+            $totalTaxable = array_sum(array_column($vatByRate, 'taxable'));
+            if ($totalTaxable > 0) {
+                $allocatedCassa = 0.0;
+                $lastRateKey = array_key_last($vatByRate);
+                foreach ($vatByRate as $rateKey => &$vatSummary) {
+                    $cassaShare = $rateKey === $lastRateKey
+                        ? round($cassaAmount - $allocatedCassa, 2)
+                        : round($cassaAmount * $vatSummary['taxable'] / $totalTaxable, 2);
+                    $allocatedCassa += $cassaShare;
+                    $vatSummary['taxable'] += $cassaShare;
+                    $vatSummary['tax'] += round($cassaShare * $vatSummary['rate'] / 100, 2);
+                }
+                unset($vatSummary);
+            }
+        }
+        ksort($vatByRate, SORT_NUMERIC);
+        $vatTaxableTotal = array_sum(array_column($vatByRate, 'taxable'));
+        $totalVat = array_sum(array_column($vatByRate, 'tax'));
 
         $clientName = $invoice['client_type'] === 'company'
             ? $invoice['company_name']
@@ -268,6 +333,7 @@ try {
                 th { background: #f8f9fa; font-weight: 600; }
                 .totals { margin-left: auto; width: 280px; page-break-inside: avoid; }
                 .totals div { display: flex; justify-content: space-between; padding: 0.25rem 0; border-bottom: 1px solid #eee; font-size: 0.8rem; }
+                .totals div.vat-breakdown { font-size: 0.7rem; }
                 .totals div.total { font-weight: bold; font-size: 0.95rem; border-top: 2px solid #333; border-bottom: none; margin-top: 0.35rem; padding-top: 0.35rem; }
                 .print-bar { background: #111; color: #fff; padding: 0.7rem; text-align: center; margin-bottom: 1rem; border-radius: 8px; }
                 .print-bar button { background: #fff; color: #111; border: none; padding: 0.4rem 0.8rem; font-weight: bold; cursor: pointer; border-radius: 4px; }
@@ -368,6 +434,7 @@ try {
                         <th>Q.tà</th>
                         <th>P.U.</th>
                         <th>IVA %</th>
+                        <th>Imposta IVA</th>
                         <th>Totale Riga</th>
                     </tr>
                 </thead>
@@ -378,6 +445,7 @@ try {
                             <td><?php echo htmlspecialchars($item['Quantity'] ?? '1', ENT_QUOTES, 'UTF-8'); ?></td>
                             <td><?php echo number_format((float) ($item['UnitPrice'] ?? 0), 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></td>
                             <td><?php echo htmlspecialchars($item['VatRate'] ?? '0', ENT_QUOTES, 'UTF-8'); ?>%</td>
+                            <td><?php echo number_format((float) ($item['TaxAmount'] ?? 0), 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></td>
                             <td><?php echo number_format((float) ($item['LineTotal'] ?? 0), 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -389,22 +457,42 @@ try {
                     <span>Totale servizi/merci:</span>
                     <span><?php echo number_format($subtotal, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
                 </div>
+                <?php if ($cassaAmount > 0): ?>
+                    <div>
+                        <span>Rivalsa INPS/Cassa:</span>
+                        <span><?php echo number_format($cassaAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
+                    </div>
+                <?php endif; ?>
                 <?php if ($expensesAmount > 0): ?>
                     <div>
                         <span>Spese accessorie imponibili:</span>
                         <span><?php echo number_format($expensesAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
                     </div>
                 <?php endif; ?>
+                <div>
+                    <span>Imponibile IVA:</span>
+                    <span><?php echo number_format($vatTaxableTotal, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
+                </div>
+                <?php foreach ($vatByRate as $vatSummary): ?>
+                    <div class="vat-breakdown">
+                        <span>Imposta IVA <?php echo number_format($vatSummary['rate'], 0, ',', '.'); ?>%:</span>
+                        <span><?php echo number_format($vatSummary['tax'], 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
+                    </div>
+                <?php endforeach; ?>
+                <div>
+                    <span>Totale imposta IVA:</span>
+                    <span><?php echo number_format($totalVat, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
+                </div>
+                <?php if ($ritenutaType !== ''): ?>
+                    <div>
+                        <span>Ritenuta d'acconto (<?php echo number_format($ritenutaRate, 0, ',', '.'); ?>%):</span>
+                        <span>- <?php echo number_format($ritenutaAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
+                    </div>
+                <?php endif; ?>
                 <?php if ($nonTaxableExpensesAmount > 0): ?>
                     <div>
                         <span>Spese escluse ex art. 15:</span>
                         <span><?php echo number_format($nonTaxableExpensesAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
-                    </div>
-                <?php endif; ?>
-                <?php if ($cassaAmount > 0): ?>
-                    <div>
-                        <span>Rivalsa INPS/Cassa:</span>
-                        <span><?php echo number_format($cassaAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
                     </div>
                 <?php endif; ?>
                 <?php if (!empty($invoice['bollo_to_client']) && (float) $invoice['bollo'] > 0): ?>
@@ -414,7 +502,7 @@ try {
                     </div>
                 <?php endif; ?>
                 <div class="total">
-                    <span>Totale Fattura:</span>
+                    <span><?php echo $ritenutaType !== '' ? 'Totale a pagare:' : 'Totale Fattura:'; ?></span>
                     <span><?php echo number_format((float) $invoice['total'], 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
                 </div>
             </div>

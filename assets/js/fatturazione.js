@@ -467,11 +467,52 @@ const initializeFatturazione = () => {
         const cassaNature = document.getElementById('cassa-natura');
         const cassaAmount = document.getElementById('cassa-importo');
         const cassaTax = document.getElementById('cassa-imposta');
-        const cassaWithholding = document.getElementById('cassa-ritenuta');
         const cassaReady = Boolean(cassaSelect && cassaDetails && cassaRate && cassaTaxable && cassaVat
-            && cassaNature && cassaAmount && cassaTax && cassaWithholding);
+            && cassaNature && cassaAmount && cassaTax);
         const cassaCatalog = new Map();
         let cassaContribution = 0;
+        const ritenutaForm = document.getElementById('ritenuta-form');
+        const ritenutaType = document.getElementById('ritenuta-tipo');
+        const ritenutaRate = document.getElementById('ritenuta-aliquota');
+        const ritenutaAmount = document.getElementById('ritenuta-importo');
+        const ritenuteCatalog = new Map();
+
+        const updateRitenuta = () => {
+            if (!ritenutaForm || !ritenutaType || !ritenutaRate || !ritenutaAmount) return;
+            const enabled = !regimeNoWithholding() && ritenutaType.value !== '';
+            ritenutaForm.hidden = regimeNoWithholding();
+            ritenutaRate.disabled = !enabled;
+            ritenutaRate.required = enabled;
+            const rate = enabled ? Number(ritenutaRate.value) || 0 : 0;
+            ritenutaAmount.value = roundMoney(getTaxableTotal() * rate / 100).toFixed(2);
+        };
+
+        if (ritenutaForm && ritenutaType && ritenutaRate) {
+            fetch('/assets/data/ritenute.json')
+                .then((response) => {
+                    if (!response.ok) throw new Error('Impossibile caricare le ritenute');
+                    return response.json();
+                })
+                .then((ritenute) => {
+                    ritenute.forEach((ritenuta) => {
+                        ritenuteCatalog.set(ritenuta.value, ritenuta);
+                        ritenutaType.append(new Option(`${ritenuta.value} – ${ritenuta.name}`, ritenuta.value));
+                    });
+                    updateRitenuta();
+                })
+                .catch((error) => console.error(error));
+            ritenutaType.addEventListener('change', () => {
+                const selected = ritenuteCatalog.get(ritenutaType.value);
+                const defaults = { RT01: 20, RT02: 0, RT03: 17, RT04: 19.5, RT05: 4 };
+                ritenutaRate.value = selected ? (defaults[ritenutaType.value] ?? 0) : 0;
+                updateRitenuta();
+                updateInvoiceType();
+            });
+            ritenutaRate.addEventListener('input', () => {
+                updateRitenuta();
+                updateInvoiceType();
+            });
+        }
 
         const updateCassa = () => {
             if (!cassaReady) {
@@ -512,10 +553,6 @@ const initializeFatturazione = () => {
                 cassaNature.required = true;
             }
 
-            // Alcuni regimi non prevedono la ritenuta d'acconto.
-            cassaWithholding.disabled = regimeNoWithholding();
-            if (regimeNoWithholding()) cassaWithholding.checked = false;
-
             // L'imponibile segue le righe finché l'utente non lo modifica a mano.
             if (cassaTaxable.dataset.manual !== 'true') cassaTaxable.value = getTaxableTotal().toFixed(2);
 
@@ -528,6 +565,7 @@ const initializeFatturazione = () => {
 
         const refreshCassa = () => {
             updateCassa();
+            updateRitenuta();
             updateBolloVisibility();
             updateInvoiceType();
         };
@@ -609,6 +647,7 @@ const initializeFatturazione = () => {
             total += cassaContribution;
             if (cassaTax) total += Number(cassaTax.value) || 0;
             if (bolloCheckbox?.checked) total += 2;
+            if (ritenutaAmount) total -= Number(ritenutaAmount.value) || 0;
             const documentTotal = roundMoney(total);
             if (paymentAmount && !paymentAmountManual && !(orderIdInput?.value)) {
                 paymentAmount.value = documentTotal.toFixed(2);
@@ -619,13 +658,17 @@ const initializeFatturazione = () => {
         const updateInvoiceType = () => {
             if (!invoiceTypeInput || !invoiceTypeStatus) return;
             const hasCassa = Boolean(cassaSelect?.value);
-            const simplified = getDocumentTotal() <= 400 && !hasCassa;
+            const hasRitenuta = Boolean(ritenutaType?.value);
+            const simplified = getDocumentTotal() <= 400 && !hasCassa && !hasRitenuta;
             invoiceTypeInput.value = simplified ? 'semplificata' : 'ordinaria';
             invoiceTypeStatus.innerHTML = simplified
                 ? '<strong>Fattura semplificata</strong> (default; ordinaria oltre € 400,00)'
                 : hasCassa
                     ? '<strong>Fattura ordinaria</strong> (necessaria per la cassa previdenziale)'
                     : '<strong>Fattura ordinaria</strong> (totale documento superiore a € 400,00)';
+            if (ritenutaForm) {
+                ritenutaForm.hidden = regimeNoWithholding();
+            }
         };
 
         beniForm.querySelectorAll('[data-beni-row]').forEach((itemRow, index) => {
@@ -694,6 +737,7 @@ const initializeFatturazione = () => {
                 row.querySelector('[data-summary-tax]').value = ((taxable + taxableExpenses) * (rate / 100)).toFixed(2);
                 summaryList.append(row);
             });
+            updateSummaryTotal();
             refreshCassa();
         };
         const updateSummaryTax = (summaryRow) => {
@@ -704,6 +748,17 @@ const initializeFatturazione = () => {
             if (taxInput) {
                 taxInput.value = ((taxable + taxableExpenses) * (rate / 100)).toFixed(2);
             }
+            updateSummaryTotal();
+        };
+        const updateSummaryTotal = () => {
+            const totalElement = document.querySelector('[data-vat-summary-total] strong');
+            if (!totalElement) return;
+            const total = [...(summaryList?.querySelectorAll('[data-summary-tax]') || [])]
+                .reduce((sum, input) => sum + (Number(input.value) || 0), 0);
+            totalElement.textContent = total.toLocaleString('it-IT', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
         };
         summaryList?.addEventListener('input', (event) => {
             if (event.target.matches('[name="spese_accessorie[]"], [name="spese_accessorie_non_imponibili[]"]')) {

@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<p:FatturaElettronica versione="FPR12" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2 http://www.fatturapa.gov.it/export/fatturazione/sdi/fatturapa/v1.2/Schema_del_file_xml_FatturaPA_versione_1.2.xsd">
+  <FatturaElettronicaHeader>
+    <DatiTrasmissione>
+      <IdTrasmittente>
+        <IdPaese>IT</IdPaese>
+        <IdCodice>12345678907</IdCodice>
+      </IdTrasmittente>
+      <ProgressivoInvio>00001</ProgressivoInvio>
+      <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+      <CodiceDestinatario>0000000</CodiceDestinatario>
+      <PECDestinatario>beta-solutions@pec.example</PECDestinatario>
+    </DatiTrasmissione>
+    <CedentePrestatore>
+      <DatiAnagrafici>
+        <IdFiscaleIVA>
+          <IdPaese>IT</IdPaese>
+          <IdCodice>12345678907</IdCodice>
+        </IdFiscaleIVA>
+        <CodiceFiscale>RSSMRA80A01H501U</CodiceFiscale>
+        <Anagrafica>
+          <Denominazione>Rossi Consulting S.r.l.</Denominazione>
+        </Anagrafica>
+        <RegimeFiscale>RF01</RegimeFiscale>
+      </DatiAnagrafici>
+      <Sede>
+        <Indirizzo>via Roma</Indirizzo>
+        <NumeroCivico>15</NumeroCivico>
+        <CAP>20121</CAP>
+        <Comune>Milano</Comune>
+        <Provincia>MI</Provincia>
+        <Nazione>IT</Nazione>
+      </Sede>
+      <IscrizioneREA>
+        <Ufficio>MI</Ufficio>
+        <NumeroREA>MI-1234567</NumeroREA>
+        <CapitaleSociale>10000.00</CapitaleSociale>
+        <SocioUnico>SM</SocioUnico>
+        <StatoLiquidazione>LN</StatoLiquidazione>
+      </IscrizioneREA>
+      <Contatti>
+        <Telefono>0212345678</Telefono>
+        <Email>mario.rossi@example.com</Email>
+      </Contatti>
+    </CedentePrestatore>
+    <CessionarioCommittente>
+      <DatiAnagrafici>
+        <IdFiscaleIVA>
+          <IdPaese>IT</IdPaese>
+          <IdCodice>11111111115</IdCodice>
+        </IdFiscaleIVA>
+        <CodiceFiscale>11111111115</CodiceFiscale>
+        <Anagrafica>
+          <Denominazione>Beta Solutions S.r.l.</Denominazione>
+        </Anagrafica>
+      </DatiAnagrafici>
+      <Sede>
+        <Indirizzo>via Torino, 24</Indirizzo>
+        <CAP>10121</CAP>
+        <Comune>Torino</Comune>
+        <Provincia>TO</Provincia>
+        <Nazione>IT</Nazione>
+      </Sede>
+    </CessionarioCommittente>
+  </FatturaElettronicaHeader>
+  <FatturaElettronicaBody>
+    <DatiGenerali>
+      <DatiGeneraliDocumento>
+        <TipoDocumento>TD01</TipoDocumento>
+        <Divisa>EUR</Divisa>
+        <Data>2026-11-01</Data>
+        <Numero>FT-2026-0208</Numero>
+        <DatiCassaPrevidenziale>
+          <TipoCassa>TC01</TipoCassa>
+          <AlCassa>4.00</AlCassa>
+          <ImportoContributoCassa>14.00</ImportoContributoCassa>
+          <ImponibileCassa>350.00</ImponibileCassa>
+          <AliquotaIVA>22.00</AliquotaIVA>
+        </DatiCassaPrevidenziale>
+        <ImportoTotaleDocumento>444.08</ImportoTotaleDocumento>
+        <Causale>manutenzione sito</Causale>
+      </DatiGeneraliDocumento>
+    </DatiGenerali>
+    <DatiBeniServizi>
+      <DettaglioLinee>
+        <NumeroLinea>1</NumeroLinea>
+        <Descrizione>sito aziendale</Descrizione>
+        <Quantita>1.00000000</Quantita>
+        <PrezzoUnitario>350.00000000</PrezzoUnitario>
+        <PrezzoTotale>350.00000000</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+      </DettaglioLinee>
+      <DatiRiepilogo>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <ImponibileImporto>364.00</ImponibileImporto>
+        <Imposta>80.08</Imposta>
+        <EsigibilitaIVA>I</EsigibilitaIVA>
+      </DatiRiepilogo>
+    </DatiBeniServizi>
+    <DatiPagamento>
+      <CondizioniPagamento>TP01</CondizioniPagamento>
+      <DettaglioPagamento>
+        <ModalitaPagamento>MP01</ModalitaPagamento>
+        <DataScadenzaPagamento>2026-11-01</DataScadenzaPagamento>
+        <ImportoPagamento>227.00</ImportoPagamento>
+        <CodicePagamento>versato in tesoreria</CodicePagamento>
+      </DettaglioPagamento>
+    </DatiPagamento>
+  </FatturaElettronicaBody>
+</p:FatturaElettronica>
