@@ -38,7 +38,7 @@
 				$regimes = defined('TAX_REGIMES_SUPPORTED') ? TAX_REGIMES_SUPPORTED : [];
 				?>
 
-				<h3 class="profile-modal__field--full" style="grid-column:1/-1;margin:0">Dati personali</h3>
+				<h3 class="profile-modal__field--full" style="grid-column:1/-1; margin:0;">Dati personali</h3>
 				<label class="profile-modal__field">
 					<span>Nome</span>
 					<input type="text" name="nome" value="<?php echo $firstName ?? ''; ?>" placeholder="Inserisci il nome" maxlength="60" required>
