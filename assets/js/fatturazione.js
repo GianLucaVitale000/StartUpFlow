@@ -514,12 +514,29 @@ const initializeFatturazione = () => {
             });
         }
 
+        const cassaGridFirst = cassaForm ? cassaForm.querySelector('.vat-summary-grid.cassa-grid') : null;
+        const cassaManualLabel = cassaForm ? cassaForm.querySelector('[data-cassa-manual-label]') : null;
+        const cassaManualInput = cassaForm ? cassaForm.querySelector('[data-cassa-manual-input]') : null;
+
         const updateCassa = () => {
             if (!cassaReady) {
                 cassaContribution = 0;
                 return;
             }
             const hasCassa = cassaSelect.value !== '';
+            const entry = hasCassa ? cassaCatalog.get(cassaSelect.value) : null;
+            const hasDefaultRate = entry && entry.default_rate != null;
+            const needsManualRate = hasCassa && !hasDefaultRate;
+
+            if (cassaGridFirst) {
+                cassaGridFirst.classList.toggle('has-manual-rate', needsManualRate);
+            }
+            if (cassaManualLabel) cassaManualLabel.hidden = !needsManualRate;
+            if (cassaManualInput) {
+                cassaManualInput.hidden = !needsManualRate;
+                cassaManualInput.required = needsManualRate;
+            }
+
             const noVatRegime = regimeWithoutVat();
             cassaDetails.hidden = !hasCassa;
             cassaRate.required = hasCassa;
@@ -529,7 +546,12 @@ const initializeFatturazione = () => {
                 cassaContribution = 0;
                 cassaAmount.value = '';
                 cassaTax.value = '';
+                cassaRate.value = '';
                 return;
+            }
+
+            if (hasDefaultRate) {
+                cassaRate.value = Number(entry.default_rate).toFixed(2);
             }
 
             // IVA sul contributo: in regimi senza IVA sempre 0, in ordinario si ricorda la scelta (default 22).
@@ -598,7 +620,11 @@ const initializeFatturazione = () => {
             cassaForm.addEventListener('change', (event) => {
                 if (event.target === cassaSelect) {
                     const entry = cassaCatalog.get(cassaSelect.value);
-                    cassaRate.value = entry && entry.default_rate != null ? Number(entry.default_rate).toFixed(2) : '';
+                    if (entry && entry.default_rate != null) {
+                        cassaRate.value = Number(entry.default_rate).toFixed(2);
+                    } else {
+                        cassaRate.value = '';
+                    }
                     cassaTaxable.dataset.manual = 'false';
                 } else if (event.target === cassaTaxable && cassaTaxable.value === '') {
                     cassaTaxable.dataset.manual = 'false';

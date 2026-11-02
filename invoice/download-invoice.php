@@ -88,6 +88,17 @@ try {
         $paymentStatusLabel = '';
         $xmlVatSummary = [];
         $paymentMethodLabels = [];
+        $cassaNames = [];
+        $cassaJson = @file_get_contents(__DIR__ . '/../assets/data/casse-previdenziali.json');
+        $cassaCatalog = $cassaJson === false ? null : json_decode($cassaJson, true);
+        if (is_array($cassaCatalog)) {
+            foreach ($cassaCatalog as $cassaEntry) {
+                if (isset($cassaEntry['value'], $cassaEntry['name'])) {
+                    $cassaNames[(string) $cassaEntry['value']] = (string) $cassaEntry['name'];
+                }
+            }
+        }
+        $cassaType = '';
         $paymentCatalog = json_decode((string) @file_get_contents(__DIR__ . '/../assets/data/modalita-pagamento.json'), true);
         if (is_array($paymentCatalog)) {
             foreach ($paymentCatalog as $paymentEntry) {
@@ -160,6 +171,7 @@ try {
                     if (!empty($funds)) {
                         $cassaAmount = (float) $funds[0]->getAmount();
                         $cassaTaxRate = (float) ($funds[0]->getTaxPercentage() ?? 0);
+                        $cassaType = (string) $funds[0]->getType();
                     }
                     if ($instance->getDeductionType() !== null) {
                         $ritenutaType = (string) $instance->getDeductionType();
@@ -422,10 +434,17 @@ try {
                         <p>Importo bollo addebitato al cliente: <strong><?php echo number_format((float) $invoice['bollo'], 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></strong></p>
                     <?php endif; ?>
                 </div>
+                <?php if ($cassaAmount > 0 && !empty($cassaType)): ?>
+                <div style="margin-bottom: 1rem; font-size: 0.7rem;">
+                    <p><strong>Cassa previdenziale:</strong> <?php echo htmlspecialchars($cassaType, ENT_QUOTES, 'UTF-8'); ?> – <?php echo htmlspecialchars($cassaNames[$cassaType] ?? $cassaType, ENT_QUOTES, 'UTF-8'); ?></p>
+                </div>
+            <?php endif; ?>
                 <p style="font-size: 0.7rem;">
                     L'invio della copia analogica (PDF) della fattura elettronica è un servizio di cortesia. L’originale della fattura elettronica è disponibile nell’area riservata del sito web Fatture e Corrispettivi dell’Agenzia delle entrate e costituisce l’unico documento affidabile ai fini fiscali. 
                     Invitiamo l'utente a verificare il contenuto della copia analogica al fine di escludere il rischio di eventuali inesattezze, imprecisioni e/o manomissioni di terzi.</p>
             <?php endif; ?>
+
+            
 
             <table>
                 <thead>

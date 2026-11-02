@@ -328,10 +328,10 @@ $username = $_SESSION['username'] ?? 'Utente';
                             <select id="cassa-tipo" name="cassa_tipo" class="cassa-grid__wide">
                                 <option value="">Caricamento casse previdenziali...</option>
                             </select>
+                            <label for="cassa-aliquota" data-cassa-manual-label hidden>Aliquota cassa (%)</label>
+                            <input type="number" id="cassa-aliquota" name="cassa_aliquota" min="0.01" max="100" step="0.01" inputmode="decimal" placeholder="Es. 4.00" data-cassa-manual-input hidden>
                         </div>
                         <div class="vat-summary-grid cassa-grid" data-cassa-details hidden>
-                            <label for="cassa-aliquota">Aliquota cassa (%)</label>
-                            <input type="number" id="cassa-aliquota" name="cassa_aliquota" min="0.01" max="100" step="0.01" inputmode="decimal" placeholder="Es. 4.00">
                             <label for="cassa-imponibile">Imponibile cassa</label>
                             <input type="number" id="cassa-imponibile" name="cassa_imponibile" min="0.01" step="0.01" inputmode="decimal">
                             <label for="cassa-aliquota-iva">Aliquota IVA contributo</label>
