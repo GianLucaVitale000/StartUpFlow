@@ -72,6 +72,7 @@ try {
         $items = [];
         $causale = '';
         $cassaAmount = 0.0;
+        $cassaRate = 0.0;
         $expensesAmount = 0.0;
         $nonTaxableExpensesAmount = 0.0;
         $cassaTaxRate = 0.0;
@@ -170,6 +171,7 @@ try {
                     $funds = $instance->getFunds();
                     if (!empty($funds)) {
                         $cassaAmount = (float) $funds[0]->getAmount();
+                        $cassaRate = (float) ($funds[0]->getPercentage() ?? 0);
                         $cassaTaxRate = (float) ($funds[0]->getTaxPercentage() ?? 0);
                         $cassaType = (string) $funds[0]->getType();
                     }
@@ -185,6 +187,15 @@ try {
                             $lineNature = method_exists($line, 'getVatNature') && $line->getVatNature() !== null
                                 ? (string) $line->getVatNature()
                                 : '';
+                            $lineReference = method_exists($line, 'getReference')
+                                ? trim((string) ($line->getReference() ?? ''))
+                                : '';
+                            if ($lineNature !== '') {
+                                $vatNotes[] = [
+                                    'nature' => $lineNature,
+                                    'reference' => $lineReference,
+                                ];
+                            }
                             if ($lineNature === 'N1') {
                                 $nonTaxableExpensesAmount += $lineTaxable;
                                 continue;
@@ -311,6 +322,17 @@ try {
         ksort($vatByRate, SORT_NUMERIC);
         $vatTaxableTotal = array_sum(array_column($vatByRate, 'taxable'));
         $totalVat = array_sum(array_column($vatByRate, 'tax'));
+        $vatNotes = array_values(array_unique(array_map(
+            static fn (array $note): string => $note['nature'] . '|' . $note['reference'],
+            $vatNotes
+        )));
+        $vatNotes = array_map(
+            static function (string $note): array {
+                [$nature, $reference] = explode('|', $note, 2);
+                return ['nature' => $nature, 'reference' => $reference];
+            },
+            $vatNotes
+        );
 
         $clientName = $invoice['client_type'] === 'company'
             ? $invoice['company_name']
@@ -422,7 +444,9 @@ try {
             <?php if (!empty($vatNotes)): ?>
                 <div style="margin-bottom: 0.2rem; font-size: 0.7rem;">
                     <?php foreach ($vatNotes as $note): ?>
-                        <p><strong>Natura IVA <?php echo htmlspecialchars($note['nature'], ENT_QUOTES, 'UTF-8'); ?>:</strong> <?php echo htmlspecialchars($note['reference'], ENT_QUOTES, 'UTF-8'); ?></p>
+                        <p><strong>Natura IVA <?php echo htmlspecialchars($note['nature'], ENT_QUOTES, 'UTF-8'); ?>:</strong>
+                            <?php echo htmlspecialchars($note['reference'] !== '' ? $note['reference'] : 'Operazione non soggetta ad IVA', ENT_QUOTES, 'UTF-8'); ?>
+                        </p>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
@@ -434,19 +458,24 @@ try {
                         <p>Importo bollo addebitato al cliente: <strong><?php echo number_format((float) $invoice['bollo'], 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></strong></p>
                     <?php endif; ?>
                 </div>
+                <?php endif; ?>
+
                 <?php if ($cassaAmount > 0 && !empty($cassaType)): ?>
-                <div style="margin-bottom: 1rem; font-size: 0.7rem;">
-                    <p><strong>Cassa previdenziale:</strong> <?php echo htmlspecialchars($cassaType, ENT_QUOTES, 'UTF-8'); ?> – <?php echo htmlspecialchars($cassaNames[$cassaType] ?? $cassaType, ENT_QUOTES, 'UTF-8'); ?></p>
-                </div>
-            <?php endif; ?>
+                    <div style="margin-bottom: 1rem; font-size: 0.7rem;">
+                        <p><strong>Cassa previdenziale:</strong> <?php echo htmlspecialchars($cassaType, ENT_QUOTES, 'UTF-8'); ?> – <?php echo htmlspecialchars($cassaNames[$cassaType] ?? $cassaType, ENT_QUOTES, 'UTF-8'); ?></p>
+                    </div>
+                <?php endif; ?>
+
                 <p style="font-size: 0.7rem;">
-                    L'invio della copia analogica (PDF) della fattura elettronica è un servizio di cortesia. L’originale della fattura elettronica è disponibile nell’area riservata del sito web Fatture e Corrispettivi dell’Agenzia delle entrate e costituisce l’unico documento affidabile ai fini fiscali. 
-                    Invitiamo l'utente a verificare il contenuto della copia analogica al fine di escludere il rischio di eventuali inesattezze, imprecisioni e/o manomissioni di terzi.</p>
-            <?php endif; ?>
+                    L'invio della copia analogica (PDF) della fattura elettronica è un servizio di cortesia.
+                    L’originale della fattura elettronica è disponibile nell’area riservata del sito web
+                    Fatture e Corrispettivi dell’Agenzia delle entrate e costituisce l’unico documento
+                    affidabile ai fini fiscali. Invitiamo l'utente a verificare il contenuto della copia
+                    analogica al fine di escludere il rischio di eventuali inesattezze, imprecisioni e/o
+                    manomissioni di terzi. Documento trasmesso tramite Sistema di Interscambio (SdI).
+                </p>
 
-            
-
-            <table>
+                <table>
                 <thead>
                     <tr>
                         <th>Descrizione</th>
@@ -478,7 +507,11 @@ try {
                 </div>
                 <?php if ($cassaAmount > 0): ?>
                     <div>
-                        <span>Rivalsa INPS/Cassa:</span>
+                        <span>
+                            Cassa <?php echo htmlspecialchars($cassaNames[$cassaType] ?? $cassaType, ENT_QUOTES, 'UTF-8'); ?>
+                            (<?php echo number_format($cassaRate, 2, ',', '.'); ?>% cassa,
+                            <?php echo number_format($cassaTaxRate, 2, ',', '.'); ?>% IVA):
+                        </span>
                         <span><?php echo number_format($cassaAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
                     </div>
                 <?php endif; ?>
