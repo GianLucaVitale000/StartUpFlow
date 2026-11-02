@@ -508,9 +508,7 @@ try {
                 <?php if ($cassaAmount > 0): ?>
                     <div>
                         <span>
-                            Cassa <?php echo htmlspecialchars($cassaNames[$cassaType] ?? $cassaType, ENT_QUOTES, 'UTF-8'); ?>
-                            (<?php echo number_format($cassaRate, 2, ',', '.'); ?>% cassa,
-                            <?php echo number_format($cassaTaxRate, 2, ',', '.'); ?>% IVA):
+                            Rivalsa INPS/Cassa
                         </span>
                         <span><?php echo number_format($cassaAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></span>
                     </div>
