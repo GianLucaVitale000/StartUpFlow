@@ -399,11 +399,11 @@ try {
                                 'TP02' => 'TP02 - completo',
                                 'TP03' => 'TP03 - anticipato',
                             ][$paymentTerms] ?? $paymentTerms, ENT_QUOTES, 'UTF-8'); ?>
-                            · modalità: <?php echo htmlspecialchars($paymentMethodLabels[$paymentMethod] ?? $paymentMethod, ENT_QUOTES, 'UTF-8'); ?>
+                            | modalità: <?php echo htmlspecialchars($paymentMethodLabels[$paymentMethod] ?? $paymentMethod, ENT_QUOTES, 'UTF-8'); ?>
                             <?php if ($paymentAmount !== null): ?>
-                                · Residuo: <?php echo number_format($paymentAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?>
+                                | residuo: <?php echo number_format($paymentAmount, 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?>
                             <?php endif; ?>
-                            · Status: <?php echo htmlspecialchars($paymentStatusLabel, ENT_QUOTES, 'UTF-8'); ?>
+                            | status: <?php echo htmlspecialchars($paymentStatusLabel, ENT_QUOTES, 'UTF-8'); ?>
                         </p>
                     <?php endif; ?>
                 </div>
