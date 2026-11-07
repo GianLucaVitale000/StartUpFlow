@@ -617,6 +617,19 @@ body.dashboard-page {
 	font: inherit;
 }
 
+.form-beni-discount {
+	display: flex;
+	gap: 8px;
+}
+
+.form-beni-discount select {
+	flex: 0 0 42%;
+}
+
+.form-beni-discount input {
+	min-width: 0;
+}
+
 .form-beni input[readonly] {
 	background: #eff2f7;
 	color: #4a5160;

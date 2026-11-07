@@ -275,8 +275,15 @@ $username = $_SESSION['username'] ?? 'Utente';
                         <input id="quantita-1" type="number" name="quantita[]" min="0" step="0.01" inputmode="decimal" required>
                         <label for="prezzo-unitario-1">Prezzo unitario</label>
                         <input id="prezzo-unitario-1" type="number" name="prezzo_unitario[]" min="0" step="0.01" inputmode="decimal" required>
-                        <label for="prezzo-totale-1">Prezzo totale</label>
-                        <input id="prezzo-totale-1" type="number" name="prezzo_totale[]" step="0.01" readonly required>
+                        <label for="tipo-sconto-1">Sconto</label>
+                        <div class="form-beni-discount">
+                            <select id="tipo-sconto-1" name="tipo_sconto[]" aria-label="Tipo sconto">
+                                <option value="none">Nessuno</option>
+                                <option value="percentage">%</option>
+                                <option value="amount">€</option>
+                            </select>
+                            <input id="valore-sconto-1" type="number" name="valore_sconto[]" min="0" step="0.01" value="0" aria-label="Valore sconto">
+                        </div>
                         <label for="aliquota-iva-1">Aliquota IVA</label>
                         <select id="aliquota-iva-1" name="aliquota_iva[]" required>
                             <option value="0">0%</option>
@@ -286,6 +293,8 @@ $username = $_SESSION['username'] ?? 'Utente';
                             <option value="22">22%</option>
                         </select>
                         <input type="hidden" name="aliquota_iva[]" value="0" data-aliquota-iva-value>
+                        <label for="prezzo-totale-1">Prezzo totale</label>
+                        <input id="prezzo-totale-1" type="number" name="prezzo_totale[]" step="0.01" readonly required>
                     </div>
                 </div>
                 <div id="riepilogo-importi-form">

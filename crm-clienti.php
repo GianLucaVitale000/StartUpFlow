@@ -277,7 +277,7 @@ class Order {
     public static function where($db, $client_id, int $userId) {
         $stmt = $db->prepare(
             'SELECT o.*,
-                    COALESCE((SELECT SUM(oi.quantity * oi.unit_price) FROM order_items oi WHERE oi.order_id = o.id), 0) AS total_without_vat,
+                    COALESCE((SELECT SUM(oi.quantity * oi.unit_price - oi.discount_amount) FROM order_items oi WHERE oi.order_id = o.id), 0) AS total_without_vat,
                     COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.order_id = o.id), 0) AS paid_amount,
                     (SELECT MAX(p.received_at) FROM payments p WHERE p.order_id = o.id) AS last_payment_at
              FROM orders o
@@ -351,9 +351,9 @@ class Order {
 
     // Valida e calcola le righe arrivate dal modale. Il server ricalcola sempre tutto:
     // i totali mostrati dal browser sono solo un'anteprima.
-    // Per riga: imponibile = quantità x prezzo; IVA = imponibile x aliquota; totale riga = imponibile + IVA.
+    // Per riga: imponibile netto = quantità x prezzo - sconto; IVA = imponibile netto x aliquota.
     public static function parseItems(array $post): array {
-        $fields = ['item_description', 'item_quantity', 'item_unit_price', 'item_vat_rate'];
+        $fields = ['item_description', 'item_quantity', 'item_unit_price', 'item_discount_type', 'item_discount_value', 'item_vat_rate'];
         $cols = [];
         foreach ($fields as $field) {
             $value = $post[$field] ?? [];
@@ -400,10 +400,30 @@ class Order {
             if (!in_array($row['item_vat_rate'], self::VAT_RATES, true)) {
                 throw new DomainException("Riga $n: aliquota IVA non valida.");
             }
+            if (!in_array($row['item_discount_type'], ['none', 'percentage', 'amount'], true)
+                || !preg_match('/^\d{1,8}(\.\d{1,2})?$/', $row['item_discount_value'])
+            ) {
+                throw new DomainException("Riga $n: sconto non valido.");
+            }
             $quantity = round((float) $row['item_quantity'], 2);
             $unitPrice = round((float) $row['item_unit_price'], 2);
+            $grossAmount = round($quantity * $unitPrice, 2);
+            $discountValue = round((float) $row['item_discount_value'], 2);
+            if ($row['item_discount_type'] === 'percentage' && $discountValue > 100) {
+                throw new DomainException("Riga $n: lo sconto percentuale non può superare il 100%.");
+            }
+            if ($row['item_discount_type'] === 'percentage') {
+                $discountAmount = round($grossAmount * $discountValue / 100, 2);
+            } elseif ($row['item_discount_type'] === 'amount') {
+                $discountAmount = $discountValue;
+            } else {
+                $discountAmount = 0.0;
+            }
+            if ($discountAmount > $grossAmount) {
+                throw new DomainException("Riga $n: lo sconto non può superare l'importo lordo.");
+            }
             $rate = (int) $row['item_vat_rate'];
-            $taxable = round($quantity * $unitPrice, 2);
+            $taxable = round($grossAmount - $discountAmount, 2);
             $taxAmount = round($taxable * $rate / 100, 2);
             $lineTotal = round($taxable + $taxAmount, 2);
             if ($lineTotal > self::MAX_AMOUNT) {
@@ -415,6 +435,9 @@ class Order {
                 'description' => $row['item_description'],
                 'quantity'    => number_format($quantity, 2, '.', ''),
                 'unit_price'  => number_format($unitPrice, 2, '.', ''),
+                'discount_type' => $row['item_discount_type'],
+                'discount_value' => number_format($discountValue, 2, '.', ''),
+                'discount_amount' => number_format($discountAmount, 2, '.', ''),
                 'vat_rate'    => number_format($rate, 2, '.', ''),
                 'line_total'  => number_format($lineTotal, 2, '.', ''),
             ];
@@ -432,7 +455,7 @@ class Order {
     // Scrive le righe dell'ordine. I valori arrivano già validati e ricalcolati dal server
     // (parseItems): qui si persiste solo, senza ricalcolare nulla.
     public static function insertItems(PDO $db, int $orderId, array $items): void {
-        $stmt = $db->prepare('INSERT INTO order_items (order_id, position, description, quantity, unit_price, vat_rate, line_total) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        $stmt = $db->prepare('INSERT INTO order_items (order_id, position, description, quantity, unit_price, discount_type, discount_value, discount_amount, vat_rate, line_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
         $position = 1;
         foreach ($items as $item) {
             $stmt->execute([
@@ -441,6 +464,9 @@ class Order {
                 $item['description'],
                 $item['quantity'],
                 $item['unit_price'],
+                $item['discount_type'],
+                $item['discount_value'],
+                $item['discount_amount'],
                 $item['vat_rate'],
                 $item['line_total'],
             ]);

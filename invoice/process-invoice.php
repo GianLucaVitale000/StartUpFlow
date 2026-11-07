@@ -39,10 +39,12 @@ if ($userId === null || $clientId === null) {
 use FatturaElettronicaPhp\FatturaElettronica\Address;
 use FatturaElettronicaPhp\FatturaElettronica\Customer;
 use FatturaElettronicaPhp\FatturaElettronica\Deduction;
+use FatturaElettronicaPhp\FatturaElettronica\Discount;
 use FatturaElettronicaPhp\FatturaElettronica\DigitalDocument;
 use FatturaElettronicaPhp\FatturaElettronica\DigitalDocumentInstance;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\DocumentType;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\DeductionType;
+use FatturaElettronicaPhp\FatturaElettronica\Enums\DiscountType;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\PaymentMethod;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\PaymentTerm;
 use FatturaElettronicaPhp\FatturaElettronica\Enums\TaxRegime;
@@ -99,6 +101,21 @@ if ($orderId > 0) {
     if (!$orderStmt->fetchColumn()) {
         respond(422, ['success' => false, 'message' => 'Ordine selezionato non valido']);
     }
+    $orderItemsStmt = $pdo->prepare(
+        'SELECT description, quantity, unit_price, discount_type, discount_value, vat_rate
+         FROM order_items WHERE order_id = :order_id ORDER BY position, id'
+    );
+    $orderItemsStmt->execute([':order_id' => $orderId]);
+    $orderItems = $orderItemsStmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$orderItems) {
+        respond(422, ['success' => false, 'message' => 'L’ordine selezionato non contiene righe']);
+    }
+    $_POST['descrizione'] = array_column($orderItems, 'description');
+    $_POST['quantita'] = array_column($orderItems, 'quantity');
+    $_POST['prezzo_unitario'] = array_column($orderItems, 'unit_price');
+    $_POST['tipo_sconto'] = array_column($orderItems, 'discount_type');
+    $_POST['valore_sconto'] = array_column($orderItems, 'discount_value');
+    $_POST['aliquota_iva'] = array_column($orderItems, 'vat_rate');
 }
 
 // Controllo esclusione fatture verso PA (Codice destinatario di 6 caratteri o formato FPA12)
@@ -256,18 +273,35 @@ if (strlen($causale) > 8000) {
 $descriptions = $_POST['descrizione'] ?? null;
 $quantities = $_POST['quantita'] ?? null;
 $unitPrices = $_POST['prezzo_unitario'] ?? null;
+$discountTypes = $_POST['tipo_sconto'] ?? null;
+$discountValues = $_POST['valore_sconto'] ?? null;
 $vatRates = $_POST['aliquota_iva'] ?? null;
 $natures = $_POST['natura'] ?? null;
 $expenses = $_POST['spese_accessorie'] ?? null;
 $nonTaxableExpenses = $_POST['spese_accessorie_non_imponibili'] ?? null;
 $legalReferences = $_POST['riferimento_normativo'] ?? null;
-$lineArrays = [$descriptions, $quantities, $unitPrices, $vatRates, $natures, $expenses, $legalReferences];
 
-if (!is_array($descriptions) || count(array_filter($lineArrays, 'is_array')) !== count($lineArrays)) {
+if (!is_array($descriptions) || !is_array($quantities) || !is_array($unitPrices) || !is_array($vatRates)) {
     respond(422, ['success' => false, 'message' => 'Dati dei beni e servizi non validi']);
 }
 
 $lineCount = count($descriptions);
+if (!is_array($discountTypes) || count($discountTypes) !== $lineCount) {
+    $discountTypes = array_fill(0, $lineCount, 'none');
+}
+if (!is_array($discountValues) || count($discountValues) !== $lineCount) {
+    $discountValues = array_fill(0, $lineCount, '0');
+}
+$natures = is_array($natures) && count($natures) === $lineCount
+    ? $natures
+    : array_fill(0, $lineCount, '');
+$expenses = is_array($expenses) && count($expenses) === $lineCount
+    ? $expenses
+    : array_fill(0, $lineCount, '0');
+$legalReferences = is_array($legalReferences) && count($legalReferences) === $lineCount
+    ? $legalReferences
+    : array_fill(0, $lineCount, '');
+$lineArrays = [$descriptions, $quantities, $unitPrices, $discountTypes, $discountValues, $vatRates, $natures, $expenses, $legalReferences];
 foreach ($lineArrays as $values) {
     if (!is_array($values) || count($values) !== $lineCount) {
         respond(422, ['success' => false, 'message' => 'Dati dei beni e servizi incompleti']);
@@ -276,11 +310,8 @@ foreach ($lineArrays as $values) {
 if ($lineCount === 0) {
     respond(422, ['success' => false, 'message' => 'Aggiungi almeno un bene o servizio']);
 }
-if ($nonTaxableExpenses === null) {
-    $nonTaxableExpenses = array_fill(0, $lineCount, '0');
-}
 if (!is_array($nonTaxableExpenses) || count($nonTaxableExpenses) !== $lineCount) {
-    respond(422, ['success' => false, 'message' => 'Dati delle spese anticipate non validi']);
+    $nonTaxableExpenses = array_fill(0, $lineCount, '0');
 }
 
 try {
@@ -296,25 +327,48 @@ try {
     foreach ($descriptions as $index => $rawDescription) {
         $quantityRaw = (string) $quantities[$index];
         $unitPriceRaw = (string) $unitPrices[$index];
-        $rateInput = (string) $vatRates[$index];
-        $rate = filter_var($rateInput, FILTER_VALIDATE_INT);
+        $discountType = trim((string) $discountTypes[$index]);
+        $discountValueRaw = (string) $discountValues[$index];
+        $rateInput = trim((string) $vatRates[$index]);
+        $rate = is_numeric($rateInput) && is_finite((float) $rateInput)
+            && (float) $rateInput >= 0
+            && (float) $rateInput === (float) ((int) $rateInput)
+            ? (int) $rateInput
+            : false;
         $nature = trim((string) $natures[$index]);
         $expenseRaw = (string) $expenses[$index];
         $nonTaxableExpenseRaw = (string) $nonTaxableExpenses[$index];
         $legalReference = trim((string) $legalReferences[$index]);
 
-        if ($rawDescription === '' || strlen($rawDescription) > 8000
-            || !is_numeric($quantityRaw) || !is_finite((float) $quantityRaw) || (float) $quantityRaw < 0
-            || !is_numeric($unitPriceRaw) || !is_finite((float) $unitPriceRaw) || (float) $unitPriceRaw < 0
-            || $rate === false || !is_numeric($expenseRaw) || !is_finite((float) $expenseRaw) || (float) $expenseRaw < 0
-            || !is_numeric($nonTaxableExpenseRaw) || !is_finite((float) $nonTaxableExpenseRaw) || (float) $nonTaxableExpenseRaw < 0) {
-            respond(422, ['success' => false, 'message' => 'Controlla i dati dei beni, delle aliquote e del riepilogo']);
+        $invalidField = null;
+        if ($rawDescription === '' || strlen($rawDescription) > 8000) {
+            $invalidField = 'descrizione';
+        } elseif (!is_numeric($quantityRaw) || !is_finite((float) $quantityRaw) || (float) $quantityRaw < 0) {
+            $invalidField = 'quantità';
+        } elseif (!is_numeric($unitPriceRaw) || !is_finite((float) $unitPriceRaw) || (float) $unitPriceRaw < 0) {
+            $invalidField = 'prezzo unitario';
+        } elseif (!in_array($discountType, ['none', 'percentage', 'amount'], true)
+            || !is_numeric($discountValueRaw) || !is_finite((float) $discountValueRaw) || (float) $discountValueRaw < 0) {
+            $invalidField = 'sconto';
+        } elseif ($rate === false) {
+            $invalidField = 'aliquota IVA';
+        } elseif (!is_numeric($expenseRaw) || !is_finite((float) $expenseRaw) || (float) $expenseRaw < 0) {
+            $invalidField = 'spese accessorie';
+        } elseif (!is_numeric($nonTaxableExpenseRaw) || !is_finite((float) $nonTaxableExpenseRaw) || (float) $nonTaxableExpenseRaw < 0) {
+            $invalidField = 'spese escluse';
+        }
+        if ($invalidField !== null) {
+            respond(422, ['success' => false, 'message' => 'Controlla il campo ' . $invalidField . ' della riga ' . ($index + 1)]);
         }
 
         if (mb_strlen($legalReference) > 100) {
             respond(422, ['success' => false, 'message' => 'Il riferimento normativo non può superare i 100 caratteri']);
         }
-        if (!in_array($rate, $allowedRates, true)) {
+        if (!$appliesVat) {
+            // Il regime fiscale del cedente prevale sull'aliquota eventualmente
+            // memorizzata nell'ordine: nel regime forfettario l'IVA è sempre 0%.
+            $rate = 0;
+        } elseif (!in_array($rate, $allowedRates, true)) {
             respond(422, ['success' => false, 'message' => !$appliesVat
                 ? 'Nel regime ' . $taxRegimeCode . ' l\'aliquota IVA deve essere 0%'
                 : 'Aliquota IVA non valida']);
@@ -336,9 +390,24 @@ try {
 
         $quantity = round((float) $quantityRaw, 2);
         $unitPrice = round((float) $unitPriceRaw, 2);
+        $grossAmount = round($quantity * $unitPrice, 2);
+        $discountValue = round((float) $discountValueRaw, 2);
+        if ($discountType === 'percentage' && $discountValue > 100) {
+            respond(422, ['success' => false, 'message' => 'Lo sconto percentuale non può superare il 100%']);
+        }
+        if ($discountType === 'percentage') {
+            $discountAmount = round($grossAmount * $discountValue / 100, 2);
+        } elseif ($discountType === 'amount') {
+            $discountAmount = $discountValue;
+        } else {
+            $discountAmount = 0.0;
+        }
+        if ($discountAmount > $grossAmount) {
+            respond(422, ['success' => false, 'message' => 'Lo sconto non può superare il valore della riga']);
+        }
         $additionalExpenses = round((float) $expenseRaw, 2);
         $nonTaxableAdditionalExpenses = round((float) $nonTaxableExpenseRaw, 2);
-        $taxableAmount = round($quantity * $unitPrice, 2);
+        $taxableAmount = round($grossAmount - $discountAmount, 2);
         $taxAmount = round(($taxableAmount + $additionalExpenses) * ($rate / 100), 2);
         $lineTotal = round($taxableAmount + $taxAmount + $additionalExpenses, 2);
         $invoiceTotal = round($invoiceTotal + $lineTotal, 2);
@@ -350,6 +419,9 @@ try {
             'description' => $rawDescription,
             'quantity' => $quantity,
             'unit_price' => $unitPrice,
+            'discount_type' => $discountType,
+            'discount_value' => $discountValue,
+            'discount_amount' => $discountAmount,
             'vat_rate' => $rate,
             'nature' => $nature,
             'taxable_amount' => $taxableAmount,
@@ -417,7 +489,8 @@ try {
     // La scelta del tipo documento è automatica: la semplificata è ammessa solo fino a 400 euro.
     // FSM10 non prevede il blocco DatiCassaPrevidenziale: la presenza della
     // cassa richiede quindi una fattura ordinaria anche sotto i 400 euro.
-    $isSimplified = $grossInvoiceTotal <= 400.00 && $cassaTipo === '' && $ritenutaTipo === '';
+    $hasDiscount = array_reduce($lineItems, static fn (bool $carry, array $item): bool => $carry || $item['discount_amount'] > 0, false);
+    $isSimplified = $grossInvoiceTotal <= 400.00 && $cassaTipo === '' && $ritenutaTipo === '' && !$hasDiscount;
 
     // Controllo limite per fattura semplificata (<= 400 EUR)
     if ($isSimplified && $invoiceTotal > 400.00) {
@@ -610,6 +683,15 @@ try {
                 ->setTotal($li['taxable_amount'])
                 ->setTaxPercentage($li['vat_rate']);
 
+            if ($li['discount_amount'] > 0) {
+                $discount = (new Discount())->setType(DiscountType::SC());
+                if ($li['discount_type'] === 'percentage') {
+                    $discount->setPercentage($li['discount_value']);
+                } else {
+                    $discount->setAmount($li['discount_amount']);
+                }
+                $regLine->addDiscount($discount);
+            }
             if ($li['nature'] !== null) {
                 $regLine->setVatNature($li['nature']);
             }

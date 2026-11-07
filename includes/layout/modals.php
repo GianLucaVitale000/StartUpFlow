@@ -336,18 +336,28 @@
 
 	<template id="order-item-template">
 		<div class="order-item">
-			<input type="text" name="item_description[]" class="form-control" placeholder="Descrizione" maxlength="500" required aria-label="Descrizione">
-			<input type="number" name="item_quantity[]" class="form-control" placeholder="Q.tà" step="0.01" min="0" required aria-label="Quantità">
-			<input type="number" name="item_unit_price[]" class="form-control" placeholder= "P.U."  step="0.01" min="0.00" required aria-label="Prezzo unitario">
-			<select name="item_vat_rate[]" class="form-control" aria-label="Aliquota IVA">
-				<option value="22" selected>IVA 22%</option>
-				<option value="10">IVA 10%</option>
-				<option value="5">IVA 5%</option>
-				<option value="4">IVA 4%</option>
-				<option value="0">IVA 0%</option>
-			</select>
-			<output class="order-item__total" aria-label="Totale riga">0,00</output>
-			<button type="button" class="btn btn-secondary" data-order-remove-item aria-label="Rimuovi riga">Reset</button>
+			<div class="order-item__primary">
+				<input type="text" name="item_description[]" class="form-control" placeholder="Descrizione" maxlength="500" required aria-label="Descrizione">
+				<input type="number" name="item_quantity[]" class="form-control" placeholder="Q.tà" step="0.01" min="0" required aria-label="Quantità">
+				<input type="number" name="item_unit_price[]" class="form-control" placeholder="P.U." step="0.01" min="0.00" required aria-label="Prezzo unitario">
+			</div>
+			<div class="order-item__secondary">
+				<select name="item_discount_type[]" class="form-control" aria-label="Tipo sconto">
+					<option value="none" selected>Nessuno sconto</option>
+					<option value="percentage">Sconto %</option>
+					<option value="amount">Sconto €</option>
+				</select>
+				<input type="number" name="item_discount_value[]" class="form-control" placeholder="Sconto" step="0.01" min="0" value="0" aria-label="Valore sconto">
+				<select name="item_vat_rate[]" class="form-control" aria-label="Aliquota IVA">
+					<option value="22" selected>IVA 22%</option>
+					<option value="10">IVA 10%</option>
+					<option value="5">IVA 5%</option>
+					<option value="4">IVA 4%</option>
+					<option value="0">IVA 0%</option>
+				</select>
+				<output class="order-item__total" aria-label="Totale riga">0,00</output>
+				<button type="button" class="btn btn-secondary" data-order-remove-item aria-label="Rimuovi riga">Reset</button>
+			</div>
 		</div>
 		
 </template>
@@ -369,8 +379,14 @@
 			document.querySelectorAll('#order-items .order-item').forEach((row) => {
 				const q = parseFloat(row.querySelector('[name="item_quantity[]"]').value) || 0;
 				const p = parseFloat(row.querySelector('[name="item_unit_price[]"]').value) || 0;
+				const discountType = row.querySelector('[name="item_discount_type[]"]').value;
+				const discountValue = parseFloat(row.querySelector('[name="item_discount_value[]"]').value) || 0;
 				const rate = parseFloat(row.querySelector('[name="item_vat_rate[]"]').value) || 0;
-				const taxable = round2(q * p);
+				const gross = round2(q * p);
+				const discount = discountType === 'percentage'
+					? round2(gross * Math.min(100, discountValue) / 100)
+					: discountType === 'amount' ? Math.min(gross, round2(discountValue)) : 0;
+				const taxable = round2(gross - discount);
 				const vat = round2(taxable * rate / 100);
 				row.querySelector('.order-item__total').textContent = fmt(round2(taxable + vat));
 				subtotal = round2(subtotal + taxable);

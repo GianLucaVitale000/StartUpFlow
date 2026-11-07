@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 		}
 		$stmt = $pdo->prepare(
 			'SELECT o.id, o.order_number, o.total, o.currency, o.notes, o.status, o.payment_status,
-			        COALESCE((SELECT SUM(oi.quantity * oi.unit_price) FROM order_items oi WHERE oi.order_id = o.id), 0) AS total_without_vat,
+			        COALESCE((SELECT SUM(oi.quantity * oi.unit_price - oi.discount_amount) FROM order_items oi WHERE oi.order_id = o.id), 0) AS total_without_vat,
 			        o.paid_at, o.created_at,
 			        COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.order_id = o.id), 0) AS paid_amount,
 			        (SELECT p.method FROM payments p WHERE p.order_id = o.id ORDER BY p.received_at DESC, p.id DESC LIMIT 1) AS last_payment_method,
@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 		if ($orders) {
 			$ids = array_map(static fn($o) => (int) $o['id'], $orders);
 			$in = implode(',', array_fill(0, count($ids), '?'));
-			$itemsStmt = $pdo->prepare("SELECT id, order_id, position, description, quantity, unit_price, vat_rate, line_total FROM order_items WHERE order_id IN ($in) ORDER BY order_id, position, id");
+			$itemsStmt = $pdo->prepare("SELECT id, order_id, position, description, quantity, unit_price, discount_type, discount_value, discount_amount, vat_rate, line_total FROM order_items WHERE order_id IN ($in) ORDER BY order_id, position, id");
 			$itemsStmt->execute($ids);
 			$byOrder = [];
 			foreach ($itemsStmt->fetchAll(PDO::FETCH_ASSOC) as $item) {

@@ -480,11 +480,25 @@ dialog.profile-modal .profile-modal__panel {
 }
 
 .order-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.order-item__primary,
+.order-item__secondary {
     display: grid;
-    grid-template-columns: 3fr 1fr 1.2fr 1.1fr 1fr auto;
     gap: 0.5rem;
     align-items: center;
-    margin-bottom: 0.5rem;
+}
+
+.order-item__primary {
+    grid-template-columns: 3fr 1fr 1.2fr;
+}
+
+.order-item__secondary {
+    grid-template-columns: 1.1fr 1fr 1fr auto auto;
 }
 
 .order-item__total {
@@ -523,10 +537,17 @@ dialog.profile-modal .profile-modal__panel {
 
 /* Mobile: righe ordine in colonna compatta */
 @media (max-width: 640px) {
-    .order-item {
+    .order-item__primary,
+    .order-item__secondary {
         grid-template-columns: 1fr 1fr;
     }
-    .order-item input[name="item_description[]"] {
+
+    .order-item__primary input[name="item_description[]"] {
         grid-column: 1 / -1;
+    }
+
+    .order-item__secondary .order-item__total,
+    .order-item__secondary [data-order-remove-item] {
+        justify-self: stretch;
     }
 }

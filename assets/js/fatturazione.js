@@ -446,7 +446,12 @@ const initializeFatturazione = () => {
             beniForm.querySelectorAll('[data-beni-row]').forEach((row) => {
                 const quantity = Number(row.querySelector('[name="quantita[]"]').value) || 0;
                 const unitPrice = Number(row.querySelector('[name="prezzo_unitario[]"]').value) || 0;
-                total += quantity * unitPrice;
+                const discountType = row.querySelector('[name="tipo_sconto[]"]')?.value || 'none';
+                const discountValue = Number(row.querySelector('[name="valore_sconto[]"]')?.value) || 0;
+                const gross = quantity * unitPrice;
+                total += discountType === 'percentage'
+                    ? gross * (1 - Math.min(100, discountValue) / 100)
+                    : discountType === 'amount' ? Math.max(0, gross - discountValue) : gross;
             });
             if (summaryList) {
                 summaryList.querySelectorAll('[name="spese_accessorie[]"]').forEach((input) => {
@@ -659,7 +664,13 @@ const initializeFatturazione = () => {
                 const quantity = Number(row.querySelector('[name="quantita[]"]').value) || 0;
                 const unitPrice = Number(row.querySelector('[name="prezzo_unitario[]"]').value) || 0;
                 const rate = Number(row.querySelector('select[name="aliquota_iva[]"]').value) || 0;
-                total += quantity * unitPrice * (1 + rate / 100);
+                const discountType = row.querySelector('[name="tipo_sconto[]"]')?.value || 'none';
+                const discountValue = Number(row.querySelector('[name="valore_sconto[]"]')?.value) || 0;
+                const gross = quantity * unitPrice;
+                const taxable = discountType === 'percentage'
+                    ? gross * (1 - Math.min(100, discountValue) / 100)
+                    : discountType === 'amount' ? Math.max(0, gross - discountValue) : gross;
+                total += taxable * (1 + rate / 100);
             });
             summaryList?.querySelectorAll('[name="spese_accessorie[]"]').forEach((input) => {
                 const row = input.closest('[data-vat-summary-row]');
@@ -718,7 +729,12 @@ const initializeFatturazione = () => {
                 const quantity = Number(itemRow.querySelector('[name="quantita[]"]').value) || 0;
                 const unitPrice = Number(itemRow.querySelector('[name="prezzo_unitario[]"]').value) || 0;
                 const rate = Number(itemRow.querySelector('select[name="aliquota_iva[]"]').value) || 0;
-                const taxable = quantity * unitPrice;
+                const discountType = itemRow.querySelector('[name="tipo_sconto[]"]')?.value || 'none';
+                const discountValue = Number(itemRow.querySelector('[name="valore_sconto[]"]')?.value) || 0;
+                const gross = quantity * unitPrice;
+                const taxable = discountType === 'percentage'
+                    ? gross * (1 - Math.min(100, discountValue) / 100)
+                    : discountType === 'amount' ? Math.max(0, gross - discountValue) : gross;
                 const row = summaryTemplate.content.firstElementChild.cloneNode(true);
                 const summaryId = itemRow.dataset.vatSummaryId;
                 const rowId = `vat-${summaryId}`;
@@ -802,7 +818,12 @@ const initializeFatturazione = () => {
             const quantity = Number(row.querySelector('[name="quantita[]"]').value) || 0;
             const unitPrice = Number(row.querySelector('[name="prezzo_unitario[]"]').value) || 0;
             const aliquotaIVA = Number(row.querySelector('select[name="aliquota_iva[]"]').value) || 0;
-            const imponibile = quantity * unitPrice;
+            const discountType = row.querySelector('[name="tipo_sconto[]"]')?.value || 'none';
+            const discountValue = Number(row.querySelector('[name="valore_sconto[]"]')?.value) || 0;
+            const gross = quantity * unitPrice;
+            const imponibile = discountType === 'percentage'
+                ? gross * (1 - Math.min(100, discountValue) / 100)
+                : discountType === 'amount' ? Math.max(0, gross - discountValue) : gross;
             const iva = imponibile * (aliquotaIVA / 100);
             const totale = imponibile + iva;
             row.querySelector('[name="prezzo_totale[]"]').value = totale.toFixed(2);
@@ -832,7 +853,7 @@ const initializeFatturazione = () => {
 
         beniForm.addEventListener('input', (event) => {
             const row = event.target.closest('[data-beni-row]');
-            if (row && ['descrizione[]', 'quantita[]', 'prezzo_unitario[]'].includes(event.target.name)) {
+            if (row && ['descrizione[]', 'quantita[]', 'prezzo_unitario[]', 'tipo_sconto[]', 'valore_sconto[]'].includes(event.target.name)) {
                 if (event.target.name !== 'descrizione[]') updateTotal(row);
                 updateSummary();
             }
@@ -1178,11 +1199,15 @@ const initializeFatturazione = () => {
             const descInput = row.querySelector('[name="descrizione[]"]');
             const qtyInput = row.querySelector('[name="quantita[]"]');
             const priceInput = row.querySelector('[name="prezzo_unitario[]"]');
+            const discountTypeInput = row.querySelector('[name="tipo_sconto[]"]');
+            const discountValueInput = row.querySelector('[name="valore_sconto[]"]');
             const ivaSelect = row.querySelector('select[name="aliquota_iva[]"]');
 
             if (descInput) descInput.value = item.description || '';
             if (qtyInput) qtyInput.value = String(parseFloat(item.quantity) || 1);
             if (priceInput) priceInput.value = String(parseFloat(item.unit_price) || 0);
+            if (discountTypeInput) discountTypeInput.value = item.discount_type || 'none';
+            if (discountValueInput) discountValueInput.value = String(parseFloat(item.discount_value) || 0);
 
             if (ivaSelect) {
                 const wantedRate = String(parseInt(item.vat_rate, 10) || 0);

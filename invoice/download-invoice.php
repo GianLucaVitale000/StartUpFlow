@@ -205,6 +205,7 @@ try {
                                 'Description' => $line->getDescription(),
                                 'Quantity' => '1',
                                 'UnitPrice' => number_format($lineTaxable, 2, '.', ''),
+                                'Discount' => '',
                                 'VatRate' => (string)($line->getTaxPercentage() ?? 0),
                                 'LineTotal' => number_format($lineTaxable, 2, '.', ''),
                                 'TaxAmount' => number_format((float) ($line->getTaxAmount() ?? 0), 2, '.', ''),
@@ -215,10 +216,22 @@ try {
                         foreach ($instance->getLines() as $line) {
                             $lineTaxable = (float)$line->getTotal();
                             $subtotal += $lineTaxable;
+                            $discountLabel = '';
+                            foreach ($line->getDiscounts() as $discount) {
+                                $percentage = $discount->getPercentage();
+                                $amount = $discount->getAmount();
+                                if ($amount !== null && (float) $amount > 0) {
+                                    $discountLabel = number_format((float) $amount, 2, '.', '') . ' ' . $invoice['currency'];
+                                } elseif ($percentage !== null && (float) $percentage > 0) {
+                                    $discountLabel = number_format((float) $percentage, 2, '.', '') . '%';
+                                }
+                                break;
+                            }
                             $items[] = [
                                 'Description' => $line->getDescription(),
                                 'Quantity' => number_format((float)$line->getQuantity(), 2, '.', ''),
                                 'UnitPrice' => number_format((float)$line->getUnitPrice(), 2, '.', ''),
+                                'Discount' => $discountLabel,
                                 'VatRate' => (string)($line->getTaxPercentage() ?? 0),
                                 'LineTotal' => number_format(round($lineTaxable * (1 + (float)($line->getTaxPercentage() ?? 0) / 100), 2), 2, '.', ''),
                                 'TaxAmount' => number_format(round($lineTaxable * (float)($line->getTaxPercentage() ?? 0) / 100, 2), 2, '.', ''),
@@ -254,16 +267,31 @@ try {
                     $itemFields = ['Description', 'Quantity', 'UnitPrice', 'VatRate', 'Nature', 'TaxableAmount', 'TaxAmount', 'AdditionalExpenses', 'LegalReference', 'LineTotal'];
                     foreach ($xml->getElementsByTagName('Item') as $itemNode) {
                         $item = [];
+                        $discountNode = $itemNode->getElementsByTagName('ScontoMaggiorazione')->item(0);
                         foreach ($itemNode->childNodes as $fieldNode) {
                             if ($fieldNode instanceof DOMElement && in_array($fieldNode->tagName, $itemFields, true)) {
                                 $item[$fieldNode->tagName] = $fieldNode->textContent;
                             }
                         }
                         if (!empty($item)) {
+                            $discountLabel = '';
+                            if ($discountNode instanceof DOMElement) {
+                                $discountTypeNode = $discountNode->getElementsByTagName('Tipo')->item(0);
+                                $discountValueNode = $discountNode->getElementsByTagName('Percentuale')->item(0);
+                                if (!$discountValueNode instanceof DOMElement) {
+                                    $discountValueNode = $discountNode->getElementsByTagName('Importo')->item(0);
+                                }
+                                if ($discountValueNode instanceof DOMElement) {
+                                    $discountLabel = trim($discountValueNode->textContent)
+                                        . ($discountTypeNode instanceof DOMElement && trim($discountTypeNode->textContent) === 'SC'
+                                            && $discountNode->getElementsByTagName('Percentuale')->length > 0 ? '%' : ' ' . $invoice['currency']);
+                                }
+                            }
                             $items[] = [
                                 'Description' => $item['Description'] ?? '',
                                 'Quantity' => $item['Quantity'] ?? '1',
                                 'UnitPrice' => $item['UnitPrice'] ?? '0',
+                                'Discount' => $discountLabel,
                                 'VatRate' => $item['VatRate'] ?? '0',
                                 'LineTotal' => $item['LineTotal'] ?? '0',
                                 'TaxAmount' => $item['TaxAmount'] ?? '0',
@@ -481,6 +509,7 @@ try {
                         <th>Descrizione</th>
                         <th>Q.tà</th>
                         <th>P.U.</th>
+                        <th>Sconto</th>
                         <th>IVA %</th>
                         <th>Imposta IVA</th>
                         <th>Totale Riga</th>
@@ -492,6 +521,7 @@ try {
                             <td><?php echo htmlspecialchars($item['Description'] ?? '', ENT_QUOTES, 'UTF-8'); ?></td>
                             <td><?php echo htmlspecialchars($item['Quantity'] ?? '1', ENT_QUOTES, 'UTF-8'); ?></td>
                             <td><?php echo number_format((float) ($item['UnitPrice'] ?? 0), 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></td>
+                            <td><?php echo htmlspecialchars($item['Discount'] ?? '—', ENT_QUOTES, 'UTF-8'); ?></td>
                             <td><?php echo htmlspecialchars($item['VatRate'] ?? '0', ENT_QUOTES, 'UTF-8'); ?>%</td>
                             <td><?php echo number_format((float) ($item['TaxAmount'] ?? 0), 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></td>
                             <td><?php echo number_format((float) ($item['LineTotal'] ?? 0), 2, ',', '.'); ?> <?php echo htmlspecialchars($invoice['currency'], ENT_QUOTES, 'UTF-8'); ?></td>
